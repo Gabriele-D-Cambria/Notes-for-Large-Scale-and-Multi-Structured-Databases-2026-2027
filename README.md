@@ -130,6 +130,9 @@ We will be shown:
 
 ## 📖 Suggested Study Order
 
+1. [Big Data](./BigData)
+2. a
+
 ## 📜 Disclaimer
 
 These are personal notes, and are to be used for educational purpose only.
