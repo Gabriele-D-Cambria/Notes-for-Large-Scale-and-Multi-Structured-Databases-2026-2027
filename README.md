@@ -133,6 +133,13 @@ We will be shown:
 1. [Big Data](./BigData)
 2. [Databases History](./Databases%20History)
 
+### Argument Recap
+
+In these files, you can find a recap on some arguments considered
+prerequisistes of this course:
+
+- [Software Engineering](./recap/Software%20Engineering)
+
 ## 📜 Disclaimer
 
 These are personal notes, and are to be used for educational purpose only.
