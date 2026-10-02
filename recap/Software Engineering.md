@@ -4,6 +4,13 @@ title: Software Engineering
 
 # 1. Index
 
+- [1. Index](#1-index)
+- [2. Building a Department Management System](#2-building-a-department-management-system)
+  - [2.1. Requirements](#21-requirements)
+  - [2.2. Use Cases](#22-use-cases)
+  - [2.3. Data Modeling](#23-data-modeling)
+  - [2.4. Mockups](#24-mockups)
+
 # 2. Building a Department Management System
 
 Before designing the solution, we must first understand and formalize what the customer
@@ -30,7 +37,7 @@ The role of the engineer is to identify the most suitable:
 - **Database Management System**: The DBMS must be suitable for the problem
   domain and the expected load.
 
-## Requirements
+## 2.1. Requirements
 
 To make this decision we need to take into account:
 
@@ -48,7 +55,7 @@ To make this decision we need to take into account:
   - **External Requirements**: describe the constraints imposed by external
     entities. (legal, regulatory, etc.)
 
-## Use Cases
+## 2.2. Use Cases
 
 A _use-case_ is a formal, scenario-based description of how _actors_ interact
 with the system.
@@ -71,7 +78,7 @@ To understand whether to use the first or the second relation try asking the que
 "Does the base use case make sense without the other?" If the answer is yes,
 then it is an `<<extend>>` relationship, otherwise it is an `<<include>>` relationship.
 
-## Data Modeling
+## 2.3. Data Modeling
 
 Is a structured and formal description of the data and the relationships required
 by an information system.
@@ -98,7 +105,7 @@ After identifying these three elements we can create an **Entity-Relationship
 Aside from ER Diagrams, we also use **UML Diagrams** to describe the system, included
 additional entities, generalization, and explicit relationship cardinalities.
 
-## Mockups
+## 2.4. Mockups
 
 In order for the client to better understand the system, the engineer can create
 **a mockup of the system**. A mockup is a visual representation of the system's
