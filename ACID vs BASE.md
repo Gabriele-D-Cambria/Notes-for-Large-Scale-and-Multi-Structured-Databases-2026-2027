@@ -100,7 +100,7 @@ must wait for the data to be consistent on all servers.
 
 </div>
 <div class="">
-<img class="80" src="./images/acid_base/two_phase_commit.png" alt="Two Phase Commit">
+<img class="80" src="./images/acid_base/two-phase-commit.png" alt="Two Phase Commit">
 </div>
 </div>
 
@@ -129,7 +129,7 @@ _unthinkable_ in others (banking, stock exchange, etc.).
 
 </div>
 <div class="">
-<img class="80" src="./images/acid_base/eventual_consistency.png"
+<img class="80" src="./images/acid_base/eventual-consistency.png"
       alt="Eventual Consistency">
 </div>
 </div>

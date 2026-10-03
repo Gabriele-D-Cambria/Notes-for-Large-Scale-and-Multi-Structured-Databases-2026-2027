@@ -4,6 +4,17 @@ title: Databases History
 
 # 1. Index
 
+- [1. Index](#1-index)
+- [2. Databases History](#2-databases-history)
+  - [2.1. Database Management Systems - `DBMS`](#21-database-management-systems---dbms)
+  - [2.2. Relational Theory](#22-relational-theory)
+    - [2.2.1. Transaction](#221-transaction)
+  - [2.3. Relational DBMS](#23-relational-dbms)
+  - [2.4. Object-Relational Mapping - `ORM`](#24-object-relational-mapping---orm)
+  - [2.5. Massive Web-Scale Applications - `MWAs`](#25-massive-web-scale-applications---mwas)
+    - [2.5.1. NoSQL Databases](#251-nosql-databases)
+  - [2.6. SQL on Cloud Services](#26-sql-on-cloud-services)
+
 # 2. Databases History
 
 A _database_ is an **organized collection of data**.
@@ -33,7 +44,7 @@ which saved a list of pointers, identified by a key and ordered in specific
 positions, that allowed to have a structure that allowed faster indexing
 strategies and access time.
 
-## Database Management Systems - `DBMS`
+## 2.1. Database Management Systems - `DBMS`
 
 The creation on such databases was an incredible step forward, but it had the
 huge drawback of not being portable and standardized, since there were no
@@ -85,7 +96,7 @@ These Navigational Models had several issues:
 - `CRUD` (_Create_, _Read_, _Update_, _Delete_) operations oriented, which meant
   that complex analytic queries required hard coding
 
-## Relational Theory
+## 2.2. Relational Theory
 
 In recent times the business demanded for **analytic-style reports**. The
 existing databases were **to hard** to use, and lacked a theoretical
@@ -121,7 +132,7 @@ The third normal form is:
 > Non-key attributes must be dependent on “the key, the whole key, and
 > nothing but the key”.
 
-### Transaction
+### 2.2.1. Transaction
 
 To allow concurrent data change requests on a database system, we have to
 ensure **consistency** and **integrity** of the data. In most relational databases
@@ -145,7 +156,7 @@ These types of transactions had to be:
 - **Durable**: Once a transaction is saved to the database, its changes are expected
   to persist even if there is a failure of operating system or hardware.
 
-## Relational DBMS
+## 2.3. Relational DBMS
 
 The SQL Language was pioneered by IBM in its System R in 1974, and was at the
 center of battles between IBM and ORACLE in the 1980s.
@@ -180,7 +191,7 @@ However, the OODBMS model was not widely adopted, and the relational model remai
 dominant. Luckily though, **Object-Relational Mapping** (`ORM`) frameworks (like
 _Hibernate_) were developed to alleviate the pain of OO programmers.
 
-## Object-Relational Mapping - `ORM`
+## 2.4. Object-Relational Mapping - `ORM`
 
 An _Object-Relational Mapping_ (`ORM`) framework is a software library that
 can help and simplify the translations between the object-oriented programming model
@@ -196,7 +207,7 @@ In ORM, object are **first-class citizens**, and we map:
 - Record/Row/Tuple $\Leftrightarrow$ Object
 - Relationship $\Leftrightarrow$ Composition (must have) / Aggregation (can have)
 
-## Massive Web-Scale Applications - `MWAs`
+## 2.5. Massive Web-Scale Applications - `MWAs`
 
 From 1995 to 2005 no significant new database was introduced.
 
@@ -236,7 +247,7 @@ Since `RDBMS` were not created with these necessity in mind, and the fact that m
 of them were provided with licensing costs, Companies started to use open
 source `DBMSs`.
 
-### NoSQL Databases
+### 2.5.1. NoSQL Databases
 
 **NoSQL** is the acronym of _Not Only SQL_, and it considers **a set of data
 models** and related software.
@@ -248,7 +259,7 @@ Transactions_.
 There exists also **NewSQL Databases** which retain many features of the
 relational model, but amend the underlying technology in significant ways.
 
-## SQL on Cloud Services
+## 2.6. SQL on Cloud Services
 
 Currently, scalable services for handling relational databases are offered by big
 enterprises such as Google and Amazon.
