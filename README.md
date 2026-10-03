@@ -4,7 +4,7 @@ These are _Large-Scale and Multi-Structured Databases_
 _2026-2027_ course from University of Pisa.
 For an optimal visualization, styling, math formulas rendering
 and navigation links, consult the online version available at
-[GitHub Pages](https://gabriele-d-cambria.github.io/Notes-for-Large-Scale-and-Multi-Structured-Database-2026-2027).
+[GitHub Pages](https://gabriele-d-cambria.github.io/Notes-for-Large-Scale-and-Multi-Structured-Databases-2026-2027).
 
 ## 📚 Course Informations
 
