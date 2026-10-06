@@ -133,6 +133,7 @@ We will be shown:
 1. [Big Data](./BigData)
 2. [Databases History](./Databases%20History)
 3. [ACID vs BASE](./ACID%20vs%20BASE)
+4. [Key Value Database](./Key%20Value%20Database)
 
 ### Argument Recap
 
