@@ -23,6 +23,12 @@ title: Key Value Database
   - [2.6. Namespaces](#26-namespaces)
   - [2.7. Data Partitioning - Sharding](#27-data-partitioning---sharding)
     - [2.7.1. Replication and Consistency](#271-replication-and-consistency)
+  - [2.8. Data Compression](#28-data-compression)
+  - [2.9. Using Key-Value Databases](#29-using-key-value-databases)
+    - [2.9.1. From RBDMS to Key-Value](#291-from-rbdms-to-key-value)
+  - [2.10. Coding Tips](#210-coding-tips)
+    - [2.10.1. Complex Values](#2101-complex-values)
+  - [2.11. Limitations of Key-Value DB](#211-limitations-of-key-value-db)
 
 # 2. Key Value Database
 
@@ -316,6 +322,57 @@ search integrity we must:
 
 #### 2.3.1.2. Consistent Hashing
 
+We said that a hashing-based partitioning function maps each key to one of the
+`N` nodes.
+
+When the number of nodes changes (e.g. a node is added/removed) the **partitioning
+function changes**.
+
+As a result, _many keys will be mapped to different nodes_, and the data will have
+to be **rehashed** and moved.
+
+This can be expensive and time-consuming, especially for large datasets.
+
+One strategy to use to avoid this problem is **Consistent Hashing**.
+
+<div class="grid2">
+<div class="">
+
+Suppose to have a _circular array_ and to deploy the keys in different portions
+of the circle.
+
+When we add a new node is like adding a new partition to the circle, meaning that
+only the keys that fall into the new partition will need to be remapped.
+
+Let's suppose we apply the same hashing function to both _the keys_ and
+_the node id/name/address_, to have same range hash values, for example hexadecimal
+values on 32 bit.
+
+From the hashed node name we get an index into the **ring array**.
+
+When we want to store a new key-value, we start from the position identified by
+the **hashed key**, and proceed clockwise until we find a node.
+
+This node will be the one physically responsible of saving the data.
+
+</div>
+<div class="">
+<img class="80" src="./images/key-value-db/consistent-hashing.png"
+      alt="Consistent Hashing Scheme" />
+</div>
+</div>
+
+When we remove a node, we just move its values to the nearest clockwise node.
+
+Meanwhile if we add a new node, we evaluate all the values in the next
+clockwise node and move the ones that fall into the new partition to the new node.
+Another way to see this, is going in anti-clockwise direction from the new
+node until the first "old" node encountered, and moving all the values that
+fall in that partition to the new node.
+
+<img class="" src="./images/key-value-db/consistent-hashing-updates.png"
+      alt="Consistent Hashing" />
+
 ## 2.4. Value Format and DBMS limitations
 
 KV-DB do not expect us to specify types for the values we want to store.
@@ -481,3 +538,233 @@ Some possible setups, and their effects, are shown in the following table:
 | `N=3`, `W=1`, `R=1` | A write returns after one copy is completed.<br>The other two can be done later.<br>If a node fails before the second write data might be lost | A read only need one version.<br>We might not get the latest copy. |
 
 </div>
+
+## 2.8. Data Compression
+
+Since KV-DBs are **memory-insensitive**. While Operating Systems can exploit
+_virtual memory_ management, while working with KV-DBs this entails writing
+data to disk/flash storage, which is **much slower** than RAM memory.
+
+The only way to optimize memory and persistent storage is to use **data
+compression techniques**.
+
+We need to find compression algorithms that ensure a _trade-off_ between the
+**compression ratio** and the **compression/decompression speed**.
+
+## 2.9. Using Key-Value Databases
+
+In applications where **data organization** and **management** is more important
+than the performance, classical relational databases are the best choice.
+
+However, whenever we are more interested in **performances** and/or the
+data model is **simple** (no hierarchical relationships, no complex queries,
+no joins, ...), we may use key-value databases, since the stores are really
+simple and easy to handle.
+
+### 2.9.1. From RBDMS to Key-Value
+
+When we have a relational database, we can use the **primary key** of one of the
+tables making it a **foreign key** in a second one to create a relationship between
+them.
+
+Supposing of having two tables:
+
+- `Employee`: employee_id (PK), first_name, last_name, address
+- `Payment`: payment_id (PK), employee_id (FK), amount, date
+
+If we want to translate the relational database into key-value pairs we need
+to keep in mind that keys _embed_ information regarding the _entity name_,
+_identifier_ and _attributes_.
+
+Thus, we can translate the **Employee table** as follows:
+
+```log
+employee:$employee_id:$attribute_name = $value
+
+employee:1:first_name = "Pietro"
+employee:1:last_name = "Ducange"
+employee:1:address = "Pisa, Italy"
+
+employee:2:first_name = "Alice"
+employee:2:last_name = "Smith"
+employee:2:address = "Rome, Italy"
+
+...
+```
+
+As how to translate the **Payment table** managine one-to-many relationships,
+we can define a double-id key-value configuration:
+
+```log
+payment:$payment_id:$employee_id:$attribute_name = $value
+
+payment:1:1:amount = "1000"
+payment:1:1:date = "2024-01-01"
+
+payment:2:1:amount = "1200"
+payment:2:1:date = "2024-02-01"
+
+payment:3:2:amount = "1500"
+payment:3:2:date = "2024-01-15"
+
+...
+```
+
+At the end of the translation process, data will be organized in a **unique
+namesapace** (or bucket):
+
+```log
+employee:1:first_name = "Pietro"
+employee:1:last_name = "Ducange"
+employee:1:address = "Pisa, Italy"
+
+employee:2:first_name = "Alice"
+employee:2:last_name = "Smith"
+employee:2:address = "Rome, Italy"
+
+payment:1:1:amount = "1000"
+payment:1:1:date = "2024-01-01"
+
+payment:2:1:amount = "1200"
+payment:2:1:date = "2024-02-01"
+
+payment:3:2:amount = "1500"
+payment:3:2:date = "2024-01-15"
+
+...
+```
+
+## 2.10. Coding Tips
+
+Well-designed key pattern help minimizing the amount of code a developer
+needs to write to create functions that access and set values.
+
+It is wise to have a **naming convention** for **namespaces**, to avoid collisions
+and to make the code more readable.
+
+As far as naming conventions are concerned, we can use the following guidelines:
+
+- **Meaningful and Unambiguous Naming**
+- **Range-Based Components**: useful when we like to retrieve ranges of values
+  (dates, counters, ...)
+- **Common Delimiter**: to separate the different components of the key, we
+  can use a common delimiter (like `:` or `-`).
+- **Keep it short**: the key should be as short as possible, while still being descriptive.
+
+Using generalized **set** and **get** functions helps improve the readability
+of code, reducing the repeated use of low-level operations (concatenations,
+lookups, ...).
+
+For example, having a namespace `AppNameSpace` holding keys and values for this
+application, we can define the following functions (ignoring error checking
+and handling):
+
+```pseudocode
+define getCustAttr(p_id, p_attrName)
+  v_key = 'cust' + ':' + p_id + ':' + p_attrName;
+  return AppNameSpace[v_key];
+```
+
+```pseudocode
+define setCustAttr(p_id, p_attrName, p_value)
+  v_key = 'cust' + ':' + p_id + ':' + p_attrName;
+  AppNameSpace[v_key] = p_value;
+```
+
+As for _ranged operations_, suppose we often want to _"retrieve all customers
+who made a purchase on a particular date"_.
+
+We can then define keys associated with the customers who purchased products like
+the following:
+
+```log
+purch:061514:1:custId
+purch:061514:2:custId
+purch:061514:3:custId
+purch:061514:4:custId
+```
+
+With this key pattern, we can easily retrieve all the customers who made purchases
+on a particular date:
+
+```pseudocode
+define getCustPurchByDate(p_date)
+  v_custList = makeEmptyList();
+  v_rangeCnt = 1;
+
+  v_key = "purch:" + p_date + ":" + v_rangeCnt + ":custId";
+
+  while exists(v_key)
+    v_custList.append(AppNameSpace[v_key]);
+    v_rangeCnt = v_rangeCnt + 1;
+    v_key = "purch:" + p_date + ":" + v_rangeCnt + ":custId";
+
+  return v_custList;
+```
+
+In production applications we should also include appropriate **_error checking
+and handling_**.
+
+### 2.10.1. Complex Values
+
+Suppose we want to retrieve both the name and the address of a customer, a possible
+function based on the structure we have defined so far could be:
+
+```pseudocode
+define getCustNameAndAddress(p_id)
+  v_fname = getCustAttr(p_id, "firstName");
+  v_lname = getCustAttr(p_id, "lastName");
+  v_address = getCustAttr(p_id, "address");
+  v_city = getCustAttr(p_id, "city");
+  v_state = getCustAttr(p_id, "state");
+  v_zip = getCustAttr(p_id, "zip");
+
+  v_fullName = v_fname + " " + v_lname;
+  v_fullAddr = v_address + ", " + v_city + ", " + v_state + " " + v_zip;
+
+  return makeList(v_custName, v_custAddress);
+```
+
+This function makes **six access to the database** using the `getCustAttr` function.
+
+To speedup the function execution, we should either **reduce** the number of
+times the developer has to call the _get_ function or caching the data in
+memory (but with data partitions this can be difficult).
+
+What we may do could be to **store commonly used attributes _together_** in a
+single value:
+
+```log
+cust:$customer_id:nameAddr
+
+cust:1:nameAddr = { 'Jane Anderson', '39 NE River St. Portland, OR 97222' }
+cust:2:nameAddr = { 'John Smith', '123 Main St. Anytown, USA 12345' }
+...
+```
+
+Since key-value database usually store entire list together in a single _data block_,
+we will have reduced the number of _read_ operations from six to one.
+
+This technique is to be used with caution, since as the structure **grows in
+size**, the time required to read and write the data increases as well as it
+could start to be stored in **more than one memory block**. Without taking in
+consideration problems relating to update this aggregation whenever a single
+part gets changed.
+
+In general, if we need to use too complex structures for the DB of our
+application, it is better to move towards different architectures, such as
+**_Document Databases_**.
+
+## 2.11. Limitations of Key-Value DB
+
+Some limitations that comes when using KV-DBs are the following:
+
+- **The only way to look up values is by key**: although some DBMSs for key-value
+  DB offer APIs that support common search features (_wildcard_ searches, _proximity_
+  searches, _range_ searches, _Boolean operators_, etc.) that return a set of keys
+  that have associated values that satisfy the search criteria, this is not generalized
+  and depends heavily on the DBMS we are using.
+- **They may not support range queries**: this is true in general, but some DBMSs
+  (called _ordered KV databases_) keeps a sorted structure that allows for
+  range queries and/or support _secondary indexes_ and _some text search_.
+- **There is no standard query language comparable to SQL for relational databases**
