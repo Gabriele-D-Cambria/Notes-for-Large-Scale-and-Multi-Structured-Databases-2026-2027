@@ -134,6 +134,7 @@ We will be shown:
 2. [Databases History](./Databases%20History)
 3. [ACID vs BASE](./ACID%20vs%20BASE)
 4. [Key Value Database](./Key%20Value%20Database)
+5. [Document Database](./Document%20Database)
 
 ### Argument Recap
 
