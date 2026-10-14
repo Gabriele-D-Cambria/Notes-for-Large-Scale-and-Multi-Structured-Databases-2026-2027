@@ -4,6 +4,8 @@ title: Document Database
 
 # 1. Index
 
+<!--toc:start-->
+
 - [1. Index](#1-index)
 - [2. Document Database](#2-document-database)
   - [2.1. XML Documents](#21-xml-documents)
@@ -12,6 +14,14 @@ title: Document Database
     - [2.1.3. Drawbacks](#213-drawbacks)
   - [2.2. JSON Documents](#22-json-documents)
     - [2.2.1. JSON Databases](#221-json-databases)
+  - [2.3. Document Embedding](#23-document-embedding)
+    - [2.3.1. Example](#231-example)
+  - [2.4. Many to Many Relations](#24-many-to-many-relations)
+    - [2.4.1. Example: Time Series](#241-example-time-series)
+  - [2.5. Indexing Document Database](#25-indexing-document-database)
+  - [2.6. Read and Write-Heavy Applications](#26-read-and-write-heavy-applications)
+  - [2.7. Transactions Processing Systems](#27-transactions-processing-systems)
+  <!--toc:end-->
 
 # 2. Document Database
 
@@ -318,3 +328,510 @@ _Arrays_ as well can contain simple values or nested documents.
 
 We call **Collection** a set of documents sharing some _common purpose_, even
 if they have different fields and structures.
+
+## 2.3. Document Embedding
+
+A normal document database could _theoretically_ implement a **third
+normal form schema**, simulating the relational database tables.
+
+We must try to **_avoid to re-build a relational database_** using
+`JSON` or `XML` documents.
+
+When we have something like this example:
+
+```json
+{
+  "id": 123,
+  "title": "CAMPUS REMEMBER",
+  "category": "Action",
+  "Actors": [
+    { "actor_id": 1, "name": "John Doe" },
+    { "actor_id": 2, "name": "Jane Smith" },
+    { "actor_id": 3, "name": "Bob Johnson" }
+  ]
+}
+```
+
+This allows us to retrieve both a film and its actors in a single query.
+
+However, is it plausible to think that \_actors_could appear across multiple
+documents.
+
+In a complex design this could lead to **issues** and possibly **inconsistencies**
+if one of the actor's attributes changes.
+Moreover, some `JSON` databases have a **document size limit** (e.g., `16MB`
+in `MongoDB`),
+which could be a problem if we have a lot of actors.
+
+To solve this problem we can use **Document Linking** (or _document references_),
+rolling back to something similar to a relational database.
+We will then have a collection of films and a collection of actors, and we
+link them using the
+actors' `id`:
+
+```json
+{
+  "id": 123,
+  "title": "CAMPUS REMEMBER",
+  "category": "Action",
+  "actors": [1, 2, 3]
+}
+```
+
+```json
+{
+  "actor_id": 1,
+  "name": "John Doe"
+}
+{
+  "actor_id": 2,
+  "name": "Jane Smith"
+}
+{
+  "actor_id": 3,
+  "name": "Bob Johnson"
+}
+```
+
+This is allowed for simple linking. Instead, if we start collecting multiple
+documents simulating complex joins we probably chose the wrong data model and
+we should consider revert back to a relational database.
+
+Apart from this consideration, there is no equivalent of _third normal form_
+that defines a "correct" model.
+
+### 2.3.1. Example
+
+<div class="grid2">
+<div class="">
+
+Lets consider the **customer** entity which may have associated a list of
+address entities.
+
+This relation is a **one-to-may**, and, since logically different customers
+addresses are not related, we can just **embed** the information in the
+_customer document_.
+
+```json
+{
+  "customer_id": 76123,
+  "name": "Acme Data MOdeling Services",
+  "person_or_business": "business",
+  "address": [
+    {
+      "street": "276 North Amber St",
+      "city": "Vancouver",
+      "state": "WA",
+      "zip": "99076"
+    },
+    {
+      "street": "89 Morton St",
+      "city": "Salem",
+      "state": "NH",
+      "zip": "01097"
+    }
+  ]
+}
+```
+
+This model works just fine. That said, we must still address the _document
+size_ issue. Commonly, it is rare that a customer has more than a few
+addresses, so in this case is not a problem.
+
+</div>
+<div class="">
+<img class="80" src="./images/document-db/embedding-example.png"
+      alt="Document Embedding Example" />
+</div>
+</div>
+
+Nonetheless, if we have a **one-to-many** relation where the "many" side is
+**unbounded**, we should consider using **document linking** instead of
+_embedding_. This is also suggested in several database documentations.
+
+<div class="grid2">
+<div class="">
+
+Instead, id we have a button that will recall the addresses only if requested,
+we could be thinking of using the _document linking_ approach.
+The final choice will depend on several factors, like:
+
+- Size of the "many" side (we already addressed this)
+- Average number of times the addresses are requested
+
+The linking approach will become something like this:
+
+```json
+{
+  "_id": 76123,
+  "name": "Acme Data MOdeling Services",
+  "person_or_business": "business",
+  "address_ids": [101, 102]
+}
+```
+
+```json
+{
+  "_id": 101,
+  "street": "276 North Amber St",
+  "city": "Vancouver",
+  "state": "WA",
+  "zip": "99076"
+}
+```
+
+```json
+{
+  "_id": 102,
+  "street": "89 Morton St",
+  "city": "Salem",
+  "state": "NH",
+  "zip": "01097"
+}
+```
+
+The **id-index** is defined by default by several document databases,
+so we can use it to retrieve the addresses.
+
+</div>
+<div class="">
+<img class="80" src="./images/document-db/linking-example.png"
+      alt="Document Linking Example" />
+</div>
+</div>
+
+One last choice we can make is to use a **hybrid approach**
+where we embed the most accessed informations, but decide to link the rest.
+
+This is called **Partial Embedding**.
+
+<div class="grid2">
+<div class="">
+
+In this case, we can embed the informations required by the mockup (`id` and `city`),
+and using the `id` we save all the other informations in a separate document.
+This way have access to the most common informations without having to query the
+database, still allowing to retrieve the rest of the informations if needed.
+
+```json
+{
+  "_id": 76123,
+  "name": "Acme Data MOdeling Services",
+  "person_or_business": "business",
+  "address": [
+    {
+      "address_id": 101,
+      "city": "Vancouver"
+    },
+    {
+      "address_id": 102,
+      "city": "Salem"
+    }
+  ]
+}
+```
+
+```json
+{
+  "_id": 101,
+  "street": "276 North Amber St",
+  "city": "Vancouver",
+  "state": "WA",
+  "zip": "99076"
+}
+```
+
+```json
+{
+  "_id": 102,
+  "street": "89 Morton St",
+  "city": "Salem",
+  "state": "NH",
+  "zip": "01097"
+}
+```
+
+This allows us to be faster than the _linking approach_, keeping the
+database size smaller than the _embedding approach_.
+
+This has a price we have to pay: since informations are duplicated, we
+have to **propagate any updates made in one or the other document**.
+
+</div>
+<div class="">
+<img class="80" src="./images/document-db/partial-embedding-example.png"
+      alt="Document Partial Embedding Example" />
+</div>
+</div>
+
+## 2.4. Many to Many Relations
+
+Let's consider an example of application in which:
+
+- A **student** can be enrolled in many courses
+- A **course** can have many students enrolled to it
+
+We can model the situation considering the following two collecitons:
+
+<div class="grid2">
+<div class="">
+
+```json
+{
+  {
+    "courseId": "C1667",
+    "title": "Introduction to Data Modeling",
+    "instructor": "Dr. Smith",
+    "credits": 3,
+    "enrolledStudents": [ "S1001", "S1002" ]
+  },
+  {
+    "courseId": "C1668",
+    "title": "Advanced Database Systems",
+    "instructor": "Dr. Johnson",
+    "credits": 3,
+    "enrolledStudents": [ "S1001", "S1003" ]
+  }
+}
+```
+
+</div>
+<div class="">
+
+```json
+{
+  {
+    "studentId": "S1001",
+    "name": "Brian Nelson",
+    "gradYear": 2024,
+    "courses": [ "C1667", "C1668" ]
+  },
+  {
+    "studentId": "S1002",
+    "name": "Emily Davis",
+    "gradYear": 2025,
+    "courses": [ "C1667" ]
+  },
+  {
+    "studentId": "S1003",
+    "name": "Michael Brown",
+    "gradYear": 2024,
+    "courses": [ "C1668" ]
+  }
+}
+```
+
+</div>
+</div>
+
+In this case, it could be more efficient to use a **partial embedding** approach,
+where we embed the most accessed information (like `courseId` and `title`) in
+the student documents, and link to the full course documents for additional details.
+
+The same could be done for the course documents, embedding the `studentId` and
+`name` of enrolled students, while linking to the full student documents for
+more information.
+
+<div class="grid2">
+<div class="">
+
+```json
+{
+  "studentId": "S1001",
+  "name": "Brian Nelson",
+  "gradYear": 2024,
+  "courses": [
+    {
+      "courseId": "C1667",
+      "title": "Introduction to Data Modeling"
+    },
+    {
+      "courseId": "C1668",
+      "title": "Advanced Database Systems"
+    }
+  ]
+}
+```
+
+</div>
+<div class="">
+
+```json
+{
+  "courseId": "C1667",
+  "title": "Introduction to Data Modeling",
+  "instructor": "Dr. Smith",
+  "credits": 3,
+  "enrolledStudents": [
+    {
+      "studentId": "S1001",
+      "name": "Brian Nelson"
+    },
+    {
+      "studentId": "S1002",
+      "name": "Emily Davis"
+    }
+  ]
+}
+```
+
+</div>
+</div>
+
+This allows us to have _faster reads_, without needing joins, at the cost
+of needing to propagate updates to the embedded information.
+
+### 2.4.1. Example: Time Series
+
+Suppose we need to track the location, fuel consumption and other metrics of
+the trucks in a company fleet _every three minutes_, and save them in a _fleet
+management database_.
+
+A single data transmission from a truck could look like this:
+
+```json
+{
+  "truckId": "T1234",
+  "driver_name": "Jane Doe",
+  "timestamp": "2024-06-01T12:00:00",
+  "fuel_consuption_rate": "8.5 mpg",
+  "location": {
+    "lat": 37.7749,
+    "lon": -122.4194
+  },
+  "speed": 78,
+  "engineTemperature": 90,
+  ...
+}
+```
+
+Using a full embedding approach, we would have a single document for each truck
+with an attribute `operational_data` containing an array of all the data
+transmissions. This could lead.
+
+To slim the size we can use an hybrid approach, where we only save the most important
+information, such as `timestamp`, `fuel_consumption_rate`, and `location`, in
+the main truck document, while linking to separate documents for the full
+operational data.
+
+```json
+{
+  "truckId": "T1234",
+  "driver_name": "Jane Doe",
+  "operational_data": [
+    {
+      "timestamp": "2024-06-01T12:00:00",
+      "fuel_consumption_rate": "8.5 mpg",
+      "location": {
+        "lat": 37.7749,
+        "lon": -122.4194
+      }
+    },
+    ...
+  ]
+}
+```
+
+```json
+{
+  "timestamp": "2024-06-01T12:00:00",
+  "fuel_consumption_rate": "8.5 mpg",
+  "location": {
+    "lat": 37.7749,
+    "lon": -122.4194
+  },
+  "speed": 78,
+  "engineTemperature": 90,
+  ...
+}
+```
+
+This could still have a **performance problem**, due to how document are handled
+by the DBMS.
+
+When we create a new document, the DBMS allocates a certain amount of space for
+it (e.g., 4 KB). If the document grows beyond that size, the DBMS has to relocate
+it to another location with sufficient space.
+After copying the document to the new location, the DBMS must _free_ the previous
+location.
+
+These operations can **adversely affect performance**, especially if they
+happen frequently.
+
+A solution for avoiding this problem is to **allocate sufficient space _when
+we create the document_**.
+
+In this case, we could _pre-allocate_ a list of measurements (e.g, 200 for a day),
+allowing the DBMS to store them in a single document without needing to
+relocate it.
+
+```json
+{
+  "truckId": "T1234",
+  "driver_name": "Jane Doe",
+  "operational_data": [
+    {
+      "timestamp": "2024-06-01T12:00:00",
+      "fuel_consumption_rate": "8.5 mpg",
+      "location": {
+        "lat": 37.7749,
+        "lon": -122.4194
+      }
+    },
+    {
+      "timestamp": null,
+      "fuel_consumption_rate": null,
+      "location": null
+    },
+    ...
+  ]
+}
+```
+
+## 2.5. Indexing Document Database
+
+Indexes are **special data structures** that store a small portion of the
+collection's data set in an **easy to traverse form**.
+
+They are usually _ordered by the value of the field_, to support _efficient
+quality matches_ and _range-based queries_, avoiding the need to scan every
+document in a collection.
+
+The index is usually composed by a **key** and an array of **pointers** to
+the documents that contain that key.
+
+This way, when we search for a key, we will only need to open the documents
+pointed by the record in the index, instead of doing a full collection scan.
+
+## 2.6. Read and Write-Heavy Applications
+
+We define **read-heavy applications** those applications that follow the schema:
+
+1. Issuing a Query
+2. Getting the results
+3. Formulating a new query based on the results
+
+In this kind of applications, the use of **several indexes** can allow the user
+to quickly access the database.
+
+As for **write-heavy applications**, for example the trucks we saw before,
+increasing the number of indexes requires us an _higher amount of time_ required
+to update the indexes and closing a write operation.
+
+In conclusion, the number and type of indexes to adopt must be identified as a
+**trade-off** solution between read and write performance.
+
+## 2.7. Transactions Processing Systems
+
+These systems are designed for _fast write operations_ and _targeted reads_.
+
+This kind of system usually relies on a **two-document model**:
+
+- **Document DB Tuned for Writes (OLTP)**: it allows an high write throughput,
+  and a low latency reads by key. It uses many small transaction being optimized
+  for operational workloads.
+- **Document DB Tuned for Reads (OLAP)**: it allows complex queries and aggregations,
+  handling large volumes of data.
+
+All the updates are propagated from the OLTP to the OLAP through a periodical
+**Extract, Transform, Load (ETL)** process.
