@@ -357,7 +357,7 @@ This node will be the one physically responsible of saving the data.
 
 </div>
 <div class="">
-<img class="80" src="./images/key-value-db/consistent-hashing.png"
+<img class="80" src="./images/key-value-db/consistent-hash.png"
       alt="Consistent Hashing Scheme" />
 </div>
 </div>
@@ -370,7 +370,7 @@ Another way to see this, is going in anti-clockwise direction from the new
 node until the first "old" node encountered, and moving all the values that
 fall in that partition to the new node.
 
-<img class="" src="./images/key-value-db/consistent-hashing-updates.png"
+<img class="" src="./images/key-value-db/consistent-hash-updates.png"
       alt="Consistent Hashing" />
 
 ## 2.4. Value Format and DBMS limitations

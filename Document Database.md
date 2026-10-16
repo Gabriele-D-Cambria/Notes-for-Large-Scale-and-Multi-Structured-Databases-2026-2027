@@ -21,7 +21,12 @@ title: Document Database
   - [2.5. Indexing Document Database](#25-indexing-document-database)
   - [2.6. Read and Write-Heavy Applications](#26-read-and-write-heavy-applications)
   - [2.7. Transactions Processing Systems](#27-transactions-processing-systems)
-  <!--toc:end-->
+  - [2.8. Sharding](#28-sharding)
+    - [2.8.1. Partitioning Algorithms](#281-partitioning-algorithms)
+  - [2.9. Design Tips](#29-design-tips)
+    - [2.9.1. Organize Collections](#291-organize-collections)
+    - [2.9.1.1. Impact of Code](#2911-impact-of-code)
+    <!--toc:end-->
 
 # 2. Document Database
 
@@ -835,3 +840,190 @@ This kind of system usually relies on a **two-document model**:
 
 All the updates are propagated from the OLTP to the OLAP through a periodical
 **Extract, Transform, Load (ETL)** process.
+
+## 2.8. Sharding
+
+**Sharding**, or **horizontal partitioning**, is the process of _dividing data blocks
+into chunks_.
+
+Each block, labeled as a _shard_ is deployed on a **specific node of a cluster**.
+
+Each node can contain **only one shard**, but each shard _can be replicated_ on
+multiple nodes.
+
+Using the sharding technique can allow us to **handle heavy loads** and **increase
+the number of users**, as data may be distributed across a variable number of
+servers that may be _added or removed_ as needed.
+
+This solution is cheaper than _vertical scaling_ and, if combined with
+replication, can also ensure **high availability** and **fast responses**.
+
+To implement sharding with a specific Document Databases, its designer has to
+select:
+
+- **Shard Key**: one r more fields **_that exists in all documents_** in a
+  collection, used to separate documents (e.g, unique ID, name, date,
+  category, etc.)
+- **Partitioning Algorithm**: a function that **_maps the shard key to a
+  specific shard_**.
+
+### 2.8.1. Partitioning Algorithms
+
+There are three main categories of partition algorithms, based on:
+
+- **Range**: if the shard key is a number or a date, we can use this kind of
+  algorithm to divide the data into ranges (e.g., 1-100, 101-200, etc. or
+  monthly ranges).
+- **Hashing**: we can use a hash function to determine where to place a document.
+  We can also use _Consistent Hashing_ [described when we were talking on
+  KV-DB](./Key%20Value%20Database#2312-consistent-hashing) to avoid _hot spots_.
+- **List**: we can use the values on an atomic shard key to determine where to
+  place a document. For example, if a product database has several types, we can
+  divide the products into shards based on their type (e.g., electronics,
+  clothing, etc.).
+
+## 2.9. Design Tips
+
+### 2.9.1. Organize Collections
+
+To design efficiently document database, we must understand what is a **Collection**.
+A **collection** is a _set of documents_ stored and managed by a Document DBMS.
+
+Unlike relational tables, a collection can contain documents with **different
+structures** (_polymorphic schema_).
+
+In general, collections should store documents about the entity of _same type,
+or at least sharing \_common purpose_.
+
+Suppose we have to model `SystemEvents`, naturally categorized as
+`ClickStreamEvent` and `ServerLogEvent` we can chose to store them in a **single
+collection** or **multiple collections**.
+
+In a **Single Collection** approach all events types stored together.
+
+```json
+// -- system_events collection -- //
+{
+  "event_type": "click_stream",
+  "datetime": "...",
+  "session_num": "...",
+  ...
+}
+{
+  "event_type": "server_log",
+  "datetime": "...",
+  "server_IP_addr": "...",
+  ...
+}
+```
+
+This comes with some advantages:
+
+- Single collection to query, with a single common index
+- Simple schema management
+- More efficient for different event types queries
+
+And some disadvantages:
+
+- Documents are mixed together
+- May require filtering
+- Different event types can gave different access patterns
+
+Meanwhile, in a **Multiple Collections** approach each event is stored in a
+separate collection, with its own structure.
+
+We can use _linking_ to mimic some hierarchical relationships between entities.
+
+For example, since both `click_stream` and `server_log` events are related to
+a `SystemEvent`, we can create a general entity `SytemEvent` with a specific
+`id` and `datetime` and other _common attributes_.
+
+Then we implement `click_stream` and `server_log` as separate collections,
+each with a link to the `SystemEvent` entity.
+
+```json
+// -- system_events collection -- //
+{
+  "event_id": "...",
+  "datetime": "...",
+  ...
+}
+```
+
+```json
+// -- click_stream_events collection -- //
+{
+  "event_id": "...",
+  "datetime": "...",
+  "session_num": "...",
+  "client_IP_addr": "...",
+  "referring_URL": "...",
+  ...
+}
+```
+
+```json
+// -- server_log_events collection -- //
+{
+  "event_id": "...",
+  "datetime": "...",
+  "event_type": "...",
+  "server_IP_addr": "...",
+  "descr": "...",
+  ...
+}
+```
+
+This comes with some advantages:
+
+- Each collection stores a single document type
+- Tailored index for each event type
+- Different retention and management policies for each collection
+- Potentially more efficient for specific event type queries
+
+As well as some disadvantages:
+
+- Queries across multiple collections may require joins or multiple queries
+- More collections to manage
+- Common operations can be more complex, requiring multiple queries or joins
+
+In the end, the choice **depends only on the _application workload_**, and not
+on the logical structure of the entities.
+
+#### 2.9.1.1. Impact of Code
+
+Another parameter to consider when choosing if using one or more collections is
+the structure of the application code.
+
+If an application code contains a substantial amount of logic that applies to all
+documents of a given types, relegating the type-specific operations to different
+function/modules, it is an indication to **create separate collections** for each
+document type.
+
+```py
+def process_event(event):
+    # Common operations for all event types
+
+    if event["event_type"] == "click_stream":
+        process_click_stream_event(event)
+    else event["event_type"] == "server_log":
+        process_server_log_event(event)
+```
+
+Instead, if the application code is mostly common to all documents, and only
+a small amount of codes handles _specialized_ or _specific_ operations (like when
+documents only differ for optional fields), it is an indication to **use a single
+collection**, with optional attributes.
+
+```py
+def process_book(doc):
+  book = {}
+  book["title"] = doc["title"]
+  book["author"] = doc["author"]
+  book["year"] = doc["year"]
+  # ...
+  book["descr"] = doc["descr"]
+
+  if doc.get("ebook") == True:
+    book["descr"] = book["descr"] + " (ebook)" + str(doc["ebook_size"])
+```
