@@ -131,10 +131,11 @@ We will be shown:
 ## 📖 Suggested Study Order
 
 1. [Big Data](./BigData)
-2. [Databases History](./Databases%20History)
-3. [ACID vs BASE](./ACID%20vs%20BASE)
-4. [Key Value Database](./Key%20Value%20Database)
-5. [Document Database](./Document%20Database)
+1. [Databases History](./Databases%20History)
+1. [ACID vs BASE](./ACID%20vs%20BASE)
+1. [Key Value Database](./Key%20Value%20Database)
+1. [Document Database](./Document%20Database)
+1. [Graph Database](./Graph%20Database)
 
 ### Argument Recap
 
