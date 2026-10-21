@@ -18,7 +18,14 @@ title: Graph Database
   - [2.2. Using Graph Databases](#22-using-graph-databases)
     - [2.2.1. Graph vs Relational Database](#221-graph-vs-relational-database)
     - [2.2.2. Graph Oriented Design](#222-graph-oriented-design)
-    <!--toc:end-->
+    - [2.2.3. Example: Recommendation](#223-example-recommendation)
+    - [2.2.4. Best Suited Scenarios](#224-best-suited-scenarios)
+    - [2.2.5. Costs of Graphs](#225-costs-of-graphs)
+  - [2.3. Graph Database Design](#23-graph-database-design)
+    - [2.3.1. Advices](#231-advices)
+      - [2.3.1.1. Neo4j Storage Model](#2311-neo4j-storage-model)
+  - [2.4. Example: Hollywood DB](#24-example-hollywood-db)
+  <!--toc:end-->
 
 # 2. Graph Database
 
@@ -307,3 +314,239 @@ Graphs are able to represents many real-work workloads scenarios:
 - **Supply Chain Management**: Graph databases can model the relationships
   between suppliers, manufacturers, distributors, and retailers. This can help to
   optimize supply chain operations, identify bottlenecks, and improve overall efficiency.
+
+### 2.2.3. Example: Recommendation
+
+<div class="grid2">
+<div class="">
+
+Suppose we ave a graph database like the one on the right, where a set of users
+are connected through `likes` edges, to movies.
+
+Supposing we want to recommend a new movie to Alice, what we can do is to
+choose a movie to which her friends, or in general other _similar users_, likes.
+
+Thus, we search the _most similar user_ to Alice, which is Bob in our example,
+and select a movie from the set of movies that Bob likes, but Alice doesn't.
+
+In this case we manage to extract a movie just using _graph queries_, without the
+need to use any other database.
+
+</div>
+<div class="">
+<img class="80" src="./images/graph-database/recommendation-example.png"
+      alt="Recommendation Example">
+</div>
+</div>
+
+### 2.2.4. Best Suited Scenarios
+
+Graph databases are not always the best choice for every application.
+
+They are particularly well-suited for scenarios where we need to:
+
+- Do **frequent multi-hop traversals** to explore relationships between entities.
+  A possible scenario would be a networking platform that stores users and
+  professional connections, where we need to find people within a set number
+  of professional connections to another person.
+- Have **several relationships types**. For example if we need to handle a
+  university platform that links students, courses, professors, etc., in which
+  we need to find the professors that supervise projects involving students
+  in a specific course.
+- Make **path-oriented queries**. A possible scenario would be a transport
+  service that maintains routes, travel times and interchange stations,
+  where we need to find a least-cost route between to cities, maybe with
+  constrains on the number of transfers or the total travel time.
+- Discover **indirect links** between entities. This could be used for example
+  to make _fraud investigations_, where something like a bank records accounts,
+  devices and relationships between "account user device", and from knowing that
+  a customer is fraudulent, we have to find all other accounts connected
+  to him through at most two shared-device steps.
+- Have a connected, evolving domain, like an IT inventory that grows from
+  application, servers, networks, and so on, where we need to find which customer
+  depends, directly or indirectly, on a specific server.
+
+For this last scenario, a possible dependency graph could be the following:
+
+<figure class="">
+<img class="" src="./images/graph-database/scenario-dependency-graph.png"
+      alt="Dependency Graph">
+<figcaption>
+
+Image extracted from official notes handed by the professor.
+
+</figcaption>
+</figure>
+
+In contrast, they may not be the best choice for scenarios where we:
+
+- Do only **simple key retrieval**, like retrieving a cart by customer ID.
+- We deal **mostly with independent documents**, like find independent products
+  with variable specifications.
+- We deal **mostly with tabular aggregations**
+- Have to follow a **strongly constrained transactional workload**, like atomically
+  transferring funds between account on a bank database.
+
+### 2.2.5. Costs of Graphs
+
+Graph databases are not necessarily more efficient than other type of
+databases, nor do they eliminate computational complexity.
+
+For example, just finding a **starting node** might rely of an index.
+
+The computational cost of traversing the graph grows with the explored portion
+of the graph, becoming significantly relevant when analyzing _high-degree_ nodes.
+
+Also **global analysis**, like _community detection_, _centrality_, etc., may
+be expensive.
+
+## 2.3. Graph Database Design
+
+Before deciding to use a graph database, we should have in mind the
+**main kinds of queries** that our application will perform on the data.
+
+As we discussed previously, graph databases are particularly well-suited for
+problems domains easily described in terms of entities and relations.
+
+The basic steps for designing a Graph DB start by reading the _requirements_ and
+the _UML Analysis Class Diagram_.
+From there we proceed by **identifying the queries** that we want to perform
+on the data as well as the **entities in the graph** and the **relations
+between them**.
+
+At this point we can start to **map domain-specific queries** to more _abstract
+graph-based queries_.
+
+An example on how the translation could be done is the following:
+
+<div class="flexbox" markdown="1">
+
+|                             Graph-Centric Query                             |                      Domain-Specific Query                       |
+| :-------------------------------------------------------------------------: | :--------------------------------------------------------------: |
+|        How many hops does it take to get from vertex A to vertex B?         | How many follows relation are between Developer A to Developer B |
+|              How many incoming edges are incident to vertex A               |               How many developers follow John Doe?               |
+|                 What is the centrality measure of vertex B?                 |      How well connected is Jane Doe in the socual network?       |
+| Is vertex C a bottleneck in the network, and what happens if it is removed? |    What would happen if a developer left the social network?     |
+
+</div>
+
+Only then we will be able to actually **implement the graph queries** and use
+**graph algorithms**.
+
+### 2.3.1. Advices
+
+Some advices to keep in mind when designing a graph database are the following.
+
+The first is to pay attention on the **dimension** of the graph. The bigger it
+is, the more computationally expensive queries will be.
+
+Secondly, if possible, we should **define and use indexes** for improving retrieval
+time.
+
+We should **Watch for Cycles** when traversing the graph,
+using appropriate data structures to _keep track_ of visited nodes, avoiding
+finding us in _endless cycles_ that revisit the same nodes multiple times.
+
+To improve memory usage, we should use **only the appropriate types of edges**,
+avoiding undirected edges for non-symmetrical relations, for example:
+
+$$
+\begin{CD}
+  \text{Actor} @> \text{ACTED_IN} >> \text{Movie}
+\end{CD}
+$$
+
+In fact, in **Property Graphs DBMSs** such as `Neo4J` edges can be traversed in
+both directions, regardless of their direction.
+
+The direction of the edge is still important for **query optimization** and for
+**graph algorithms** that rely on edge direction, and should be distinguished in
+the graph model. For example, `IS_FRIEND_OF` is semantically symmetric, whereas
+`FOLLOWS` is asymmetric.
+
+Also, we should be avoiding inserting _edges-properties_ if not necessary.
+
+#### 2.3.1.1. Neo4j Storage Model
+
+This is supported because on how `Neo4J` stores vertices and edges.
+
+In particular, each vertex stores both a list of:
+
+- **Outgoing Edges/Relationships**
+- **Incoming Edges/Relationships**
+
+Whereas the _relationships records_ stores:
+
+- **Type of Relationship** (e.g., `ACTED_IN`, `FOLLOWS`, etc.)
+- **Start Node** (the vertex from which the relationship originates)
+- **End Node** (the vertex to which the relationship points)
+
+This allows for efficient traversal of the graph in both directions. For example,
+searching all the actors that acted in a movie without this paradigm would
+require _traversing the edges of all the actor nodes_ in the graph.
+
+This way instead, we start from the specific movie entity and traverse its `ACTED_IN`
+incoming edges to find all the actors.
+
+This strategy comes also with some **trade-offs**:
+
+- **Local Bottleneck (_Supernode_)**: if a node has lots of incoming edges, `Neo4J`
+  will have to loop through all the pointers in memory, slowing the local search.
+- **Path Explosion**: Deep backward traversals through dense nodes, will inevitably
+  cause _exponential path combinations_, heavily impacting both the `RAM` and the
+  `CPU`.
+
+For these reason `Neo4J` has other strategies to store these _super-nodes_ in more
+efficient ways, but they are not relevant for our course.
+
+## 2.4. Example: Hollywood DB
+
+Let's suppose we want to design a DB for handling **movies,** **actors** and
+**directors**, able to offer following _services_ for users:
+
+1. Find all the actors that have ever appeared as a co-star in a movie
+   starring a specific actor (for example: Keanu Reeves).
+2. Find all movies and actors directed by a specific director (for
+   example Andy Wachowski).
+3. Find all movies in which specific actor has starred in, together
+   with all co-stars and directors.
+
+<img class="" src="./images/graph-database/hollywood-UML-graph.png"
+      alt="Hollywood UML Graph">
+
+It is possible to use a _relational model_ to represent this data, but SQL
+lacks the syntax to easily perform graph traversals with unbounded depth
+degrading the performance for each level of traversal.
+
+For example, to just retrieve all actors that ever worked with Keanu Reeves:
+
+```sql
+SELECT p2.personname, m1.moviename
+FROM people p1
+  JOIN actors a1 ON (p1.personid = a1.personid)
+  JOIN movies m1 ON (a1.movieid = m1.movieid)
+  JOIN actors a2 ON (m1.movieid = a2.movieid)
+  JOIN people p2 ON (a2.personid = p2.personid)
+WHERE p1.personname = 'Keanu Reeves';
+```
+
+If instead we used a **Graph Model**, our model would look something like this:
+
+<div class="grid2">
+<div class="">
+<img class="" src="./images/graph-database/simlple-hollywood-graph.png"
+      alt="Simple-Hollywood Graph">
+</div>
+<div class="">
+<img class="" src="./images/graph-database/hollywood-graph.png"
+      alt="Hollywood Graph">
+</div>
+</div>
+
+The same query as before would look something like this:
+
+```cypher
+MATCH (keanu:Person {name:"Keanu Reeves"})
+  -[:ACTED_IN]->(movie)<-[:ACTED_IN]-(coStar)
+RETURN coStar.name;
+```
