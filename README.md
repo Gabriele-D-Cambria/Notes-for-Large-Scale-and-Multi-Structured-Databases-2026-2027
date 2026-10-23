@@ -136,6 +136,7 @@ We will be shown:
 1. [Key Value Database](./Key%20Value%20Database)
 1. [Document Database](./Document%20Database)
 1. [Graph Database](./Graph%20Database)
+1. [Design a Social Network](./Design%20a%20Social%20Network)
 
 ### Argument Recap
 
@@ -143,6 +144,7 @@ In these files, you can find a recap on some arguments considered
 prerequisistes of this course:
 
 - [Software Engineering](./recap/Software%20Engineering)
+- [RESTful APIs](./recap/RESTful%20APIs)
 
 ## 📜 Disclaimer
 

@@ -25,6 +25,7 @@ title: Graph Database
     - [2.3.1. Advices](#231-advices)
       - [2.3.1.1. Neo4j Storage Model](#2311-neo4j-storage-model)
   - [2.4. Example: Hollywood DB](#24-example-hollywood-db)
+  - [2.5. Replication and Sharding in Graph Database](#25-replication-and-sharding-in-graph-database)
   <!--toc:end-->
 
 # 2. Graph Database
@@ -334,7 +335,7 @@ need to use any other database.
 
 </div>
 <div class="">
-<img class="80" src="./images/graph-database/recommendation-example.png"
+<img class="60" src="./images/graph-database/recommendation-example.png"
       alt="Recommendation Example">
 </div>
 </div>
@@ -368,7 +369,7 @@ They are particularly well-suited for scenarios where we need to:
 
 For this last scenario, a possible dependency graph could be the following:
 
-<figure class="">
+<figure class="60">
 <img class="" src="./images/graph-database/scenario-dependency-graph.png"
       alt="Dependency Graph">
 <figcaption>
@@ -452,7 +453,7 @@ avoiding undirected edges for non-symmetrical relations, for example:
 
 $$
 \begin{CD}
-  \text{Actor} @> \text{ACTED_IN} >> \text{Movie}
+  \text{Actor} @>\text{ACTED\_IN}> > \text{Movie}
 \end{CD}
 $$
 
@@ -538,7 +539,7 @@ If instead we used a **Graph Model**, our model would look something like this:
       alt="Simple-Hollywood Graph">
 </div>
 <div class="">
-<img class="" src="./images/graph-database/hollywood-graph.png"
+<img class="90" src="./images/graph-database/hollywood-graph.png"
       alt="Hollywood Graph">
 </div>
 </div>
@@ -550,3 +551,39 @@ MATCH (keanu:Person {name:"Keanu Reeves"})
   -[:ACTED_IN]->(movie)<-[:ACTED_IN]-(coStar)
 RETURN coStar.name;
 ```
+
+## 2.5. Replication and Sharding in Graph Database
+
+Replication in graph databases is the process of creating and maintaining
+copies of the graph data across multiple nodes or servers.
+
+The main benefits of replication include:
+
+- **High Availability**: If one node fails, the system can continue to operate
+  using the replicated data on other nodes.
+- **Read Scalability**: Replication allows for distributing read operations across
+  multiple nodes, improving performance and reducing latency.
+- **Fault Tolerance**: Replication helps to protect against data loss in case of
+  hardware failures or other issues.
+
+However, replication is supported only by **enterprise versions** of graph databases,
+such as `Neo4j Enterprise Edition` or `Amazon Neptune`, that are not available
+for free.
+
+Thus, for the purpose of this course's project, it will not need to implement
+replication in our graph database design.
+
+**Sharding** in the context of graph databases refers to the process of partitioning
+the graph data, scaling the graph horizontally across multiple servers or nodes.
+
+This technique introduces **cross-shard relationships** that can be
+challenging to manage, as they may require additional network communication
+and coordination between shards, without mentioning the **distributed queries
+and updates** that will be needed to maintain the integrity of the graph
+across partitions.
+
+Real world example of DBMSs that support sharding are `Neo4J Composite`,
+`TigerGraph`, `JanusGraph`, ...
+
+In general, sharding is complex on graph databases alone, so we will see how it
+becomes way easier with the help of **Columnal Databases** (`Cassandra`).
