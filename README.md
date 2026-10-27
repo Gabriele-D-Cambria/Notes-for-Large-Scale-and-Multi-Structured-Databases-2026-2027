@@ -146,6 +146,10 @@ prerequisistes of this course:
 - [Software Engineering](./recap/Software%20Engineering)
 - [RESTful APIs](./recap/RESTful%20APIs)
 
+### Lab
+
+1. [Redis](./lab/Redis)
+
 ## 📜 Disclaimer
 
 These are personal notes, and are to be used for educational purpose only.
