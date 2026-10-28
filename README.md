@@ -141,7 +141,7 @@ We will be shown:
 ### Argument Recap
 
 In these files, you can find a recap on some arguments considered
-prerequisistes of this course:
+prerequisites of this course:
 
 - [Software Engineering](./recap/Software%20Engineering)
 - [RESTful APIs](./recap/RESTful%20APIs)
@@ -169,4 +169,4 @@ the author directly.
 ## 📄 License
 
 This work is protected by copyright.
-Se [LICENSE](./LICENSE) for further details.
+See [LICENSE](./LICENSE) for further details.
