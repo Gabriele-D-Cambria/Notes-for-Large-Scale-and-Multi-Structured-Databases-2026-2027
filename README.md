@@ -93,6 +93,8 @@ The _individual assessment_ will depend on:
 - Overall evaluation of the project
 - Answers given by the specific student during the **project discussions**
 
+Further informations can be found in the [Project Guidelines](./Project%20Guidelines.pdf).
+
 ## 🎯 Course Structure
 
 In this course we will talk about:
@@ -137,6 +139,7 @@ We will be shown:
 1. [Document Database](./Document%20Database)
 1. [Graph Database](./Graph%20Database)
 1. [Design a Social Network](./Design%20a%20Social%20Network)
+1. [Guidelines for Selecting a Database](./Guidelines%20for%20Selecting%20a%20Database)
 
 ### Argument Recap
 

@@ -4,3 +4,4 @@ recap/*mockup
 stilePersonalizzato.css
 *.pdf
 */*.dio
+!Project Guidelines.pdf
