@@ -140,6 +140,7 @@ We will be shown:
 1. [Graph Database](./Graph%20Database)
 1. [Design a Social Network](./Design%20a%20Social%20Network)
 1. [Guidelines for Selecting a Database](./Guidelines%20for%20Selecting%20a%20Database)
+1. [Column Database](./Column%20Database)
 
 ### Argument Recap
 
