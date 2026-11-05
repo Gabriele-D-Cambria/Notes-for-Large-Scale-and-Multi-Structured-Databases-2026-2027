@@ -219,12 +219,10 @@ databases, each handling different aspect of the application:
 |          Sales analytics          |   `MongoDB`   |          -           |                    Analysises completed deals together with property, user and location infos                     |              `Deal`, `Property`, `User`, `City`               |
 | Listnig and appointment analytics |   `MongoDB`   |       `Redis`        |             Copies relevant historical listing and appointment information to `MongoDB` for analysis              |       `SaleListing`, `Appointment`, `Property`, `Buyer`       |
 
-|
-
 </div>
 
-The design principle followed was to store on the graph selected redundant
-attributes for search and recommendation, while `MondoDB` stores complete and
-historical information.
+The design principle followed was to store:
 
-`Redis` stores the current operational state of listings and appointments.
+- `GraphDB`: selected redundant attributes for search and recommendation
+- `MondoDB`: complete and historical information
+- `Redis`: the current operational state of listings and appointments

@@ -520,7 +520,7 @@ It can also be used for notification from a _publisher_:
 <p class="subt">Publisher</p>
 
 ```sh
-publis my-channel "Hello Clients!"
+publish my-channel "Hello Clients!"
 ```
 
 </div>
@@ -584,7 +584,7 @@ try (Jedis jedis = new Jedis("localhost", 6379)) {
 
 > [!warning]
 > For this to work in `Jedis` the `notify-keyspace-events` must be set to `Ex`
-> (expiration events) in the `redis.conf` file or using the command line:
+> (expiration events) in the `redis.conf` file or using the command line.
 
 ### 2.12.3. Publisher Receiver Definition
 

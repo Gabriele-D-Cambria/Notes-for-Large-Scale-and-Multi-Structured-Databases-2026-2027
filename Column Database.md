@@ -164,7 +164,7 @@ On the right we can see an use example.
 </div>
 <div class="">
 <figure class="75">
-<img class="100" src="./images/column-db/big-table.png"
+<img class="80" src="./images/column-db/big-table.png"
         alt="Big Table">
 <figcaption>
 
@@ -180,7 +180,7 @@ where the **key** is the _row-identifier_, _column-name_ and _timestamp_.
 On the image below we can see an example of a column family with two columns,
 saved in different time instants.
 
-<img class="" src="./images/column-db/big-table-2.png"
+<img class="30" src="./images/column-db/big-table-2.png"
         alt="Big Table 2">
 
 This means that:
@@ -326,7 +326,7 @@ family (in separate files) and compresses it by exploiting:
 A simplified example of the physical organization of a compressed column
 family could be the following:
 
-<img class="" src="./images/column-db/column-family-compression.png"
+<img class="30" src="./images/column-db/column-family-compression.png"
         alt="Column Family Compression">
 
 To further compress data, we can exploit repetition of a value across rows.
@@ -416,7 +416,7 @@ Furthermore, we have:
 - **DataNode**: Stores the actual data blocks for `HBase` tables in `HDFS` and
   serves them to `HBase` when requested.
 
-<img class="" src="./images/column-db/hbase-architecture.png"
+<img class="30" src="./images/column-db/hbase-architecture.png"
         alt="HBase Architecture">
 
 ### 2.4.3. Column Architecture: Cassandra
@@ -440,3 +440,6 @@ This approach comes with several advantages:
 5. When a node is **removed** servers hosting _replicas of data from the
    removed node_ will respond to read/write requests, automatically re-balancing
    the load, and introducing little to no down time.
+
+<img class="30" src="./images/column-db/cassandra-architecture.png"
+        alt="Cassandra Architecture">
