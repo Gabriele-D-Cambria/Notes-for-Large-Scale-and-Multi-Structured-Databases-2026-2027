@@ -19,6 +19,13 @@ title: Column Database
     - [2.4.1. Partitioning in Cassandra and HBase](#241-partitioning-in-cassandra-and-hbase)
     - [2.4.2. Column Architecture: HBase](#242-column-architecture-hbase)
     - [2.4.3. Column Architecture: Cassandra](#243-column-architecture-cassandra)
+  - [2.5. Internal Mechanisms](#25-internal-mechanisms)
+    - [2.5.1. Commit Logs](#251-commit-logs)
+    - [2.5.2. Bloom Filters](#252-bloom-filters)
+    - [2.5.3. Consistency Level and Replication](#253-consistency-level-and-replication)
+    - [2.5.4. Anti Entropy](#254-anti-entropy)
+    - [2.5.5. Communication Protocols](#255-communication-protocols)
+    - [2.5.6. Cassandra Read and Write Protocol](#256-cassandra-read-and-write-protocol)
     <!--toc:end-->
 
 # 2. Column Database
@@ -443,3 +450,235 @@ This approach comes with several advantages:
 
 <img class="30" src="./images/column-db/cassandra-architecture.png"
         alt="Cassandra Architecture">
+
+## 2.5. Internal Mechanisms
+
+To understand how distributed Columns DBMSs ensure efficient data access,
+durability and high availability, we will explore the **main mechanisms**
+adopted by distributed databases, with particular reference to `Cassandra`.
+
+### 2.5.1. Commit Logs
+
+**Commit Logs** are **_append-only files_**, meaning they always write data to
+the end of the file.
+
+These files allow column databases to **avoid waiting too much** for the
+definitive writes on persistent supports.
+
+Whenever a write operation is sent to the database, it is first stored into
+the commit log.
+
+Then, the data is updated into the specific server and disk block. Eventually, the
+write is _propagated_ to all the peers that have a replica of the data in background
+(asynchronous).
+
+These can be very useful even in case of failure, since they allow **data recovery**
+just by reading its entries and writing them into the partitions.
+
+They are also used in **in-memory databases**.
+
+When we write an entry one node will handle the request (suppose `Server1`). He
+will write the entry into its own **commit log** and then proceed to asynchronously
+replicate it in the entry to the other nodes.
+
+### 2.5.2. Bloom Filters
+
+**Bloom Filters** are **_probabilistic data structures_**, that help to
+**reduce** the number of **reading operations**, avoiding reading
+partitions that certainly **do not contain** a specific searched key.
+
+In general, a Bloom filter tests whether or not an element is a member of a set,
+by giving two answers: `no` and `maybe`.
+
+The `no` answer is **always correct**, while `maybe` is **not always correct**,
+meaning that it can give a _false positive_.
+
+To understand better how they work, let's consider a **specific partition**: an
+_array of $n$ binary values initialized to all_ `0`.
+
+Let's also consider a set of $k \ll n$ _hash functions_ which **map each data**
+to be stored into the partition in an element of the array.
+
+When a new data is **added** (**write**) to the partition, all the hash
+functions are calculated on the key and the corresponding bit are set to `1`.
+
+When a _read_ operation is required, all the hash functions will be calculated
+on the key, and the access to the partition will be actually performed
+**if and only if** all the corresponding element in the array are set to `1`.
+
+This means that, if we have even one `0`, **we are sure that the key is not present**
+in the partition, and we can avoid reading it.
+
+This does not avoid false positive.
+
+For example, suppose we have `n = 10` and `k = 3`.
+
+When we insert `K101` our three hash gives us $h_1(K101) = 1, h_2(K101) = 6,
+h_3(K101) = 8$.
+Our array will be `[0, 1, 0, 0, 0, 0, 1, 0, 1, 0]`.
+
+When we want to lookup for `K105` our three hash gives us $h_1(K105) = 1,
+h_2(K105) = 6, h_3(K105) = 9$. While bit `1` and `6` are set, having bit `9` as
+`0` gives us the certainty that `K105` is **not present** in the partition.
+
+If instead we lookup for a `K110` which produces $h_1(K110) = 6, h_2(K110) = 8,
+h_3(K110) = 1$, our bloom filter tells us that the value **may be present** even
+if its not.
+
+Furthermore, if we deleted `K101` we cannot reset its corresponding bits, since
+they may be used by other keys, and removing them would lead to the possible
+introduction of **false negatives**. Hence, we introduce even more **false positives**.
+
+There are some consideration on $n$ and $k$ that we can do to optimize
+the probability of false positive such as using:
+
+- $n = O(h)$
+- $k = \log_2\left(\frac{n}{h}\right)$
+
+Where $h$ is the number of value to check against the filter.
+
+### 2.5.3. Consistency Level and Replication
+
+**Consistency level** refers to the consistency **_between copies of data on different
+replicas_**.
+
+We can consider different level of consistency:
+
+- **Strong Consistency**: All replicas of a data item are guaranteed to be
+  consistent at all times. This means that when a write operation is performed,
+  all replicas are updated before the operation is considered complete.
+- **Low Consistency**: At least one replicas must be updated immediately after
+  a write operation, while the others can wait. This can lead to temporary
+  inconsistencies between replicas and can result in **stale reads**.
+- **Moderate Consistency**: All the intermediate solutions between strong and low
+  consistency.
+
+The consistency level depends on the specific **application requirements**.
+
+Consistency level is strictly related to the **replication process**, which
+regards where to **place replicas** and **how to keep them updated**.
+
+Usually, there is a _pre-defined server_ for the first replica, which becomes
+in charge of **identifying the position of the other replicas** among the
+available servers.
+
+This **primary server** is often determined by a hash function, and different
+databases can have different replication strategies.
+
+For example, `Cassandra` uses clusters organized in **logical rings**.
+Additional replicas are stored in **successive nodes** in the rings in _clockwise
+directions_.
+
+### 2.5.4. Anti Entropy
+
+**Anti-entropy** is the process of **_detecting differences in replicas_**.
+
+It is very important to **detect and resolve inconsistencies** among replicas
+**_exchanging a low amount of data_**.
+
+One way to do this check, is to use **hash trees**: Each _leaf node_ stores
+a hash computed **over a specific subset of records** (which includes both _keys_
+and _values_) within a partition.
+
+Each internal node will instead store a hash **computed from the hashes of its children**.
+
+To understand how this work, lets consider a database partitioned in 4 data groups
+$D_1, D_2, D_3, D_4$.
+
+For each group we compute a hash $H_i = h(D_i)$ using all the key-value pairs
+in the partition.
+
+These values will become our _leaves_.
+
+After, we take the hashing values in couples, and compute the hash of the **concatenation**
+$(\parallel)$ of the two hashes: $H_{ij} = h(H_i \parallel H_j)$.
+
+We then proceed recursively until we reach the root of the tree, which will
+contain a hash $H_{root} = h(H_{12} \parallel H_{34})$.
+
+When we want to check for differences between two replicas, we **can just compare
+their root**, thus reducing exponentially the amount of data to exchange.
+
+If the two root hashes differ, we will be sire that there is a differernce in the
+data.
+
+To find it, we proceed in a binary search manner starting from the _root_:
+
+1. Check if the two nodes are equal. If they are different continue.
+1. Check the left children of the _nodes_ we are equal. If they are continue, otherwise
+   restart from the first point.
+1. Check the right children of the _nodes_ we are equal. If they are continue, otherwise
+   restart from the first point.
+
+By doing this we will rapidly (_logarithmic time_) find the **leaf** that contains
+the difference.
+
+At that point we can perform a linear search to find the actual value(s) that differ.
+
+Hash algorithms, such as `SHA-256`, which are commonly used in **hash-trees** are
+designed to **_minimize the risk of collisions_**.
+
+However, no hashing algorithm is truly collision-tree, and we can just
+make do with the **extremely low probability** for secure algorithms such as `SHA-256`
+or `SHA-3`.
+
+Therefore, in a well-designed system collisions are unlikely, but the risk should
+still be considered, especially in highly critical applications, since they would
+lead to an **undetected discrepancy** and therefore a **failure to identify
+differences** between copies of the data.
+
+### 2.5.5. Communication Protocols
+
+The nodes in a distributed database communicate with each other using
+**communication protocols**.
+
+What we would like to have is that **all nodes are aware of the status of the other
+nodes**.
+
+> [!NOTE]
+> This is not a course where we will discuss the details of communication
+> protocols, but we will just give a brief overview.
+
+This can be done following different protocols:
+
+- **All-to-All**: every node sends one message to each of the other nodes. In
+  total $M = n(n-1) \in O(n^2)$ messages are sent, which rapidly becomes
+  unmanageable as the number of nodes increases.
+- **Centralized**: one node gets elected as the _leader_, and all the other nodes
+  send their messages to it. The leader then sends a single message to all the
+  other nodes. In total $M = 2(n-1) \in O(n)$ messages are sent, which is more
+  manageable than the _All-to-All_ approach, but introduces a _single point of failure_
+  and _non-negligible overhead_ in the leader.
+- **Gossip**: each node _randomly selects_ a small number of other nodes to send
+  its message to. Each of those nodes then randomly selects a small number of
+  other nodes to send the message to, and so on. This approach is more scalable
+  than the _All-to-All_ and _Centralized_ approaches, but it can take longer for
+  all nodes to receive the message. When we send a message to a node, we also
+  insert informations relating the status we received, "flooding" the informations.
+
+### 2.5.6. Cassandra Read and Write Protocol
+
+In a `Cassandra Cluster`, **any node _can handle a client request_** .
+
+This is doable, because all nodes have information about the **state** of the cluster,
+and can act as a **proxy** for the client, forwarding internally the request to
+the appropriate node in the cluster.
+
+<img class="30" src="./images/column-db/cassandra-read-protocol.png"
+        alt="Cassandra Read Protocol">
+
+In case the forwarded node is not available, in reads we can select one of the other
+nodes that has a replica of the data, while in writes we may have two scenarios:
+
+1. The operation will be lost, thus the target node will be in inconsistent state
+   after its recover.
+1. A specific node can be designated to receive write operations and forward them
+   to the target node when it becomes available.
+
+What `Cassandra` does is **initiates a _hinted handoff_**:
+
+1. The proxy node creates a data structure to store information about: _the write
+   operation_ and _where it should ultimately be sent_, confirming the write to
+   the client
+2. It starts _periodically checking_ the status of the target server
+3. When the target becomes available once again, it **sends the write operation**
