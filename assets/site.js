@@ -22,6 +22,10 @@ function setupPrismCodeBlocks() {
     Prism.languages.x86asm = Prism.languages.nasm;
   }
 
+  if (Prism.languages.mongodb) {
+    Prism.languages.bson = Prism.languages.mongodb;
+  }
+
   // Riapplica Prism dopo aver aggiunto le classi
   if (window.Prism) {
     Prism.highlightAll();
