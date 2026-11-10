@@ -26,7 +26,18 @@ title: Column Database
     - [2.5.4. Anti Entropy](#254-anti-entropy)
     - [2.5.5. Communication Protocols](#255-communication-protocols)
     - [2.5.6. Cassandra Read and Write Protocol](#256-cassandra-read-and-write-protocol)
-    <!--toc:end-->
+  - [2.6. Design Tips](#26-design-tips)
+    - [2.6.1. User and Query Guided Design](#261-user-and-query-guided-design)
+    - [2.6.2. Sparse and Multidimensional Maps](#262-sparse-and-multidimensional-maps)
+    - [2.6.3. Denormalization and Valueless Columns](#263-denormalization-and-valueless-columns)
+    - [2.6.4. Modelling Polymorphic Entities](#264-modelling-polymorphic-entities)
+    - [2.6.5. Distribute the load in HBase](#265-distribute-the-load-in-hbase)
+    - [2.6.6. Column Value Versioning](#266-column-value-versioning)
+    - [2.6.7. Keeping Simple Structures](#267-keeping-simple-structures)
+    - [2.6.8. Indexing](#268-indexing)
+      - [2.6.8.1. Manually Creating and Managing Secondary Indexes](#2681-manually-creating-and-managing-secondary-indexes)
+      - [2.6.8.2. Typical Use Cases](#2682-typical-use-cases)
+      <!--toc:end-->
 
 # 2. Column Database
 
@@ -682,3 +693,365 @@ What `Cassandra` does is **initiates a _hinted handoff_**:
    the client
 2. It starts _periodically checking_ the status of the target server
 3. When the target becomes available once again, it **sends the write operation**
+
+## 2.6. Design Tips
+
+### 2.6.1. User and Query Guided Design
+
+In the following, we will analyze some examples of **typical queries** that may
+led to choose **column databases**.
+
+The first one is:
+
+> How many new orders were placed in the Northwest Region Yesterday?
+
+Data like _order date_, _region_ and _order status_ can be stored in separate
+columns of the same column family, allowing **fast access to only the
+relevant columns**, avoiding retrieving unnecessary data.
+
+This minimizes I/O and speed up the aggregation process (like counting the number
+of orders), specifically for the _Northwest Region_ on a particular date.
+
+A second type of query is:
+
+> When did a particular customer last place an order?
+
+For this query, we only need data from the _customer ID_ and _order date_ columns,
+whose access becomes very efficient using columnar storage, which allow for
+their retrieval without scanning unrelated columns.
+
+A third typical query we will see is:
+
+> What orders are en route to customers in London, England?
+
+For this query, the only relevant data to retrieve are the _order status_
+and _customer location_.
+
+As before, columnar databases allow fast filtering on these columns, so
+querying orders that are _en route_ to a specific location is very efficient.
+
+The last example is:
+
+> What products in the Ohio warehouse have fewer than the stock keeping minimum
+> number of items?
+
+This query requires access to _warehouse location_, _product name_ and _inventory
+count_ columns.
+
+Using a columnar database we allow for _quick filtering on location_ and _fast
+comparison_ of inventory levels **without accessing other product
+attributes**, making it efficient for inventory management or alerts
+for stock levels.
+
+In general, queries provide information needed to effectively design column
+family databases, through the information of:
+
+- **Entities and their attributes**: A single row describes the _instance of a
+  single entity_. Rows are uniquely identified by a _row key_. Its attributes are
+  modeled using _columns_.
+- **Query criteria**: The selection criteria should be used to determine
+  _optimal ways to organize data_ through tables and column families. It should
+  also provide informations about how to _build partitions_.
+- **Derived values**: They are an indicator that additional attributes
+  may be needed to store derived data (e.g., _count of orders placed yesterday
+  by a user_, etc.)
+
+Us designers must start with this information, and then use the **features of
+column-based** DBMSs to **select the _most appropriate_ implementation**.
+
+### 2.6.2. Sparse and Multidimensional Maps
+
+Column databases are implemented **as _sparse_ and _multidimensional_ maps**, in
+which columns **may vary** between rows, as well as being **_dynamically added_**.
+
+It does not uses **joins** because _data is denormalized_.
+
+For these reasons, when using column databases it is suggested to
+**use separate keyspace** for each application.
+
+In `HBase`, the logical table is stored as a **collection of _individual
+key-value cells_**:
+
+```log
+cust001 / address:street / t1 -> "178 Main St."
+cust001 / address:city / t1 -> "Boise"
+cust001 / address:state / t1 -> "ID"
+cust001 / address:zip / t1 -> "83701"
+cust001 / address:country / t1 -> "U.S."
+
+cust003 / address:street / t1 -> "293 Archer St."
+cust003 / address:city / t1 -> "Ottawa"
+cust003 / address:state / t1 -> "ON"
+cust003 / address:zip / t1 -> "K1A 2C5"
+cust003 / address:country / t1 -> "Canada"
+```
+
+### 2.6.3. Denormalization and Valueless Columns
+
+One stunning example of **denormalization** are the _many-to-many relationships_.
+
+In a relational db, we would typically need a third "join" table to represent the
+actual instances of relationship between two entities.
+
+In column databases, in order to avoid _join operations_, for each entity
+we can include a **set of column names** that correspond to the _related entities_.
+
+In an example of a _many-to-many relationship_ between _customers_ and _products_,
+each customer will include the set of column names that correspond to the
+_Ids_ of the purchased products.
+
+Moreover, since the column value is not used for anything else, we can **store
+the product name there**.
+
+This can avoid the access to the product table if we wanted, for example,
+to produce a report listing products purchased by a specific customer.
+
+Keep in mind that, keeping this copy of the product name in the customer
+table will **improve the read performance**, at the cost of
+**increasing the amount of storage used**.
+
+Vice versa, if we wanted to produce a report listing customers that purchased a
+specific product, we would need to **store the set of customer Ids** as a new
+_column family_ `Prod_Cust` in the product table, along with the customer names
+as column values.
+
+This also allows us to make other analytics, such as counting the number distinct
+of customers that purchased a specific product.
+
+### 2.6.4. Modelling Polymorphic Entities
+
+<div class="grid2">
+<div class="">
+
+Suppose we have a _polymorphic entity_ `Product` with three subtypes: `Applicances`,
+`Books` and `Clothing`. Each has its own unique attributes, but they also
+share some common ones, as the image on the right shows.
+
+In particular, the figure shows the _classical relational db organization_.
+
+In order to **ensure the atomicity** of the operation in column
+db, the same entity that we would have modeled as a single table with
+nullable attributes, will instead be organized in **just one table with
+_4 column families_**.
+
+This way a single instance of one entity will still have **all its attributes
+in a single row**.
+
+```log
+Row_id / Product_columns / Appliances_columns
+Row_id / Product_columns / Clothing_columns
+Row_id / Product_columns / Book_columns
+```
+
+In this case for each of the instance, we specified values for the
+**Product column** family, and for the **specific type of Product column** family.
+
+> [!important]
+> The atomicity is typically ensured by the DBMS at **row level**.  
+> Furthermore, not all Column databases support **ACID Transactions**.
+
+</div>
+<div class="">
+<img class="70" src="./images/column-db/polymorphic-entity.png"
+        alt="Polymorphic Entity">
+</div>
+</div>
+
+### 2.6.5. Distribute the load in HBase
+
+To distribute the load in `HBase`, we should use _row keys_ that spread
+writes across servers and, if possible, load data in parallel.
+
+This is important because `HBase` orders rows **lexicographically**, meaning
+that by using sequential keys (e.g., `1`, `2`, `3`, ...) will result in
+sending most writes to the same servers.
+
+Instead, our goal is to use all servers approximately equally, avoiding _single
+point of failure_ and _hot spots_.
+
+There are two techniques that can help us in distributing the load instead
+of using the _raw row key_:
+
+1. **Hash-based rows**: We can **hash the row key**. This way, thanks to how
+   _hashing algorithms are designed_, we can expect that the has of similar values
+   will be **uniformly distributed** across the servers.
+1. **Prefix-based rows**: We can append a short random string to each row key.
+   This way, if we choose carefully this prefix (e.g., `a1_`, `f3_`, `b8_`, ...)
+   the lexicographical order will send our row keys to different servers, thus
+   distributing the load.
+
+### 2.6.6. Column Value Versioning
+
+Some column DBMSs provides for **column value versions**. As we have seen before,
+this is done by using a `timestamp`-`value` key-value pair for each column.
+
+The number of versions maintained (min and max number) is controlled by the
+**database parameters**, and they should be chosen **depending on application
+_requirements_**.
+
+> [!NOTE]
+> The versions are kept in order of **_most recent first_**, based on the `timestamp`
+> (key)
+
+Versioning is useful if we need to **roll back changes** we did to column values,
+or when its important to our application to keep track of changing values over
+time, to extract statistics or to analyze trends.
+
+When we have reached the maximum number of versions but still need to
+add new values, the **oldest versions of values** will be removed during.
+
+The procedure that removed the older versions is called **data compaction**.
+
+### 2.6.7. Keeping Simple Structures
+
+Any kind of data structure may be stored in a column value, from simple
+atomic values to complex structures such as _lists_, _sets_ and also `JSON` files
+such as the following:
+
+```json
+{
+  "customer_id": 187693,
+  "name": "Kiera Brown",
+  "address": {
+    "street": "1232 Sandy Blvd.",
+    "city": "Vancouver",
+    "state": "Washington",
+    "zip": "99121"
+  },
+  "first_order": "15/01/2013",
+  "last_order": "27/06/2014"
+}
+```
+
+Saving all this information inside a single column value may be useful for
+some applications, but its generally a bad idea, since using **separate columns**
+for each attribute makes it **easier to apply database features**, such as indexing,
+and allows us to use different column families when needed.
+
+> [!TIP]
+> Store complex structures as a single column value if and only if we just
+> need to store and retrieve them as is.
+
+### 2.6.8. Indexing
+
+In DBMSs, an **index** is a specific data structure that allows the database
+engine to **retrieve data _faster_** than it otherwise would.
+
+In column databases, we can **look up a column value** to quickly _find
+rows_ that reference it, performing something similar to:
+
+We categorize indexes in two main types:
+
+- **Primary Indexes**: They are indexes of the **row keys** of a table. They
+  are automatically created and maintained by the database engine
+  when we create a table. By using them, we are able to **quickly locate rows**
+  just based on the _primary key_ of the table.
+- **Secondary Indexes**: They are indexes created on one or more **column
+  value**. They may be created by the database itself, or by the user.
+
+In general, the common sense rule is:
+
+> If we need secondary indexes on column values, and the column family
+> database provides automatically managed secondary indexes, then **we should
+> use them**.
+
+For example, supposing we have this query:
+
+```sql
+SELECT f_name, l_name
+FROM customers
+WHERE state = 'OR'
+  AND l_name = "Smith";
+```
+
+We can speedup this query by setting an index on the `state` and on the `l_name`
+attributes.
+Typically, the DBMS will use the **most selective** index first (i.e., the one that
+returns the fewest rows), and then filter the results using the other index.
+
+The automatic use of secondary indexes has the advantage that even if
+our application requirements change, we do not need to change our code to use
+them.
+
+There are also scenarios when we should avoid using automatically managed
+indexes:
+
+- **Low selectivity**: if we have _few distinct values_ in a column, each index
+  will only hold a few values that will point to _large sets of rows_, thus not
+  filtering much.
+- **High Cardinality**: if we have _too many distinct values_ in a column, each
+  index will hold a lot of values that will point to _small sets or rows_, thus
+  making the indexing itself large to maintain and losing all its advantages.
+- **Many Missing Values**: if we have _sparsely populated attributes_ in a column,
+  only a _small fraction_ of rows will have a value, making the index contain
+  few entries just like the case before.
+
+#### 2.6.8.1. Manually Creating and Managing Secondary Indexes
+
+If our DBMS does not provide automatically managed secondary indexes, or if
+we choose to managing them manually, we might need to create a **manual secondary
+index**.
+
+This is a _separate table_ that maps a column value to the _row keys_ that
+contain it.
+
+<figure class="">
+<img class="100" src="./images/column-db/secondary-index.png"
+        alt="Secondary Index">
+<figcaption>
+
+If we need to find all the users in `Pisa` we just need to read the
+_index table_, get `[u1, u3]`, and fetch those rows from the _base table_.
+
+</figcaption>
+</figure>
+
+Manually managing secondary indexes is more complex than using automatically
+managed ones, since **we** need to keep the _base table_ and the _index table_
+**synchronized**.
+
+We can do it using two strategies:
+
+1. **Synchronous synchronization**: Whenever we have a new _write_ operation to
+   the _base table_, we instead update the _index table_ also. This means we
+   will perform **two write operations** per update, doubling the write latency,
+   but allowing us to have **always up-to-date indexes**.
+1. **Asynchronous synchronization**: Whenever we have a new _write_ operation to
+   the _base table_ we don't update the _index table_. Instead, schedule
+   a _periodically batch job_ (background process) which role is to **update the
+   index table**. This allows us to perform **just one write operation** per
+   update, at the cost of allowing **stale indexes** for some time,
+   following the _eventual consistency_ principle.
+
+#### 2.6.8.2. Typical Use Cases
+
+**Column and wide-column databases** are a type of database designed for
+_large-scale, distributed applications_ with high data volumes and predictable
+access patterns.
+
+They are especially well-suited when our applications needs to:
+
+- Store and retrieve **very large volumes of data**
+- **High write/read throughput** and **low latency**
+- **Horizontal scalability** across many servers
+- Queries with **predictable access patterns** (e.g., by key, by time, by entity,
+  ...)
+
+Some representative use cases can be:
+
+- **Security monitoring and log management**: In this kind of applications it is
+  common to _ingest and query large volumes_ of logs/network events, often in real-time.
+- **Big Science and Research data**: In this kind of applications it is common to
+  manage _massive scientific datasets_. Thus, it might be necessary to be able to
+  distribute the data across multiple nodes and perform **parallel processing**,
+  allowing for high throughput.
+- **Financial time-series data**: In this kind of applications it is common to
+  _store and retrieve high-volume market and trading data_, with **fast, time-based
+  access**.
+- **Web-scale applications**: In this kind of power large, data-intensive services
+  it becomes almost a need to have high availability and global scalability.
+- **Social Networks Services**: In this kind of applications (apart from the
+  network-based features, for which a _graph database_ is more suited) it is common
+  to _manage large volumes of user-generated content_, such as posts, comments,
+  likes, and shares. This needs to be done at large scale with low latency, and
+  often requires **real-time analytics**.

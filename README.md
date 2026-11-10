@@ -141,6 +141,7 @@ We will be shown:
 1. [Design a Social Network](./Design%20a%20Social%20Network)
 1. [Guidelines for Selecting a Database](./Guidelines%20for%20Selecting%20a%20Database)
 1. [Column Database](./Column%20Database)
+1. [In Memory Database](./In%20Memory%20Database)
 
 ### Argument Recap
 
@@ -153,6 +154,7 @@ prerequisites of this course:
 ### Lab
 
 1. [Redis](./lab/Redis)
+1. [MongoDB](./lab/MongoDB)
 
 ## 📜 Disclaimer
 
