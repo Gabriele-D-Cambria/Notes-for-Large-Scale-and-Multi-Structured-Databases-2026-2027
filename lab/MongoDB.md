@@ -19,6 +19,16 @@ title: MongoDB
     - [2.5.2. Mongod Database Server](#252-mongod-database-server)
     - [2.5.3. Mongo Shell](#253-mongo-shell)
     - [2.5.4. Mongo ATLAS](#254-mongo-atlas)
+  - [2.6. CRUD Operations](#26-crud-operations)
+    - [2.6.1. Create Operations](#261-create-operations)
+    - [2.6.2. Read Operations](#262-read-operations)
+    - [2.6.3. Update Operations](#263-update-operations)
+      - [2.6.3.1. Example](#2631-example)
+      - [2.6.3.2. Replace Operations](#2632-replace-operations)
+    - [2.6.4. Delete Operations](#264-delete-operations)
+  - [2.7. Database Tools](#27-database-tools)
+    - [2.7.1. Export Documents](#271-export-documents)
+    - [2.7.2. Import Documents](#272-import-documents)
     <!--toc:end-->
 
 # 2. MongoDB
@@ -49,6 +59,7 @@ CP and AP).
 > - [Manual Overview](https://www.mongodb.com/docs/manual/)
 > - [Document Overview](https://www.mongodb.com/docs/manual/core/document/)
 > - [ATLAS Architecture Guide](https://www.mongodb.com/docs/manual/administration/architecture/)
+> - [CRUD Manual](https:///docs.mongodb.com/manual/crud/)
 
 ## 2.1. Data Model
 
@@ -290,3 +301,506 @@ features for _replication_, _sharding_, _security_, _vector search_ and
 _real-time analytics_.
 
 The service is available on [the official website](https://www.mongodb.com/cloud/atlas).
+
+## 2.6. CRUD Operations
+
+### 2.6.1. Create Operations
+
+Create and insert operations are used to **add new documents** to a collection.
+
+In `MongoDB`, **insert** operation target _a single collection_. If it does not
+currently exist, it _will be created_.
+
+All write operations are **atomic** on the level of a _single document_.
+
+As we said before, each document stored in a collection **requires a
+unique `_id` field** that acts as a primary key.
+
+If an inserted document omits it, the `MongoDB` driver **automatically
+generates** a unique `ObjectId` for the `_id` field.
+
+To insert a new document into the `inventory` collection, we can use the
+`insertOne()` method:
+
+```mongodb
+// The driver will automatically generate a unique ObjectId for the _id field
+db.inventory.insertOne(
+   {
+    item: "canvas",
+    qty: 100,
+    tags: ["cotton"],
+    size: {
+      h: 28,
+      w: 35.5,
+      uom: "cm"
+    }
+  }
+)
+```
+
+If this operation is successful, the `mongosh` will output:
+
+```mongodb
+{
+  "acknowledged" : true,
+  "insertedId" : ObjectId("64b8f1e5e4b0c8a1d2f3c4b5")
+}
+```
+
+If instead we want to insert **multiple documents** at once, we can use
+the `insertMany()` method putting them into an `array`:
+
+```mongodb
+db.inventory.insertMany([
+  {
+    item: "journal",
+    qty: 25,
+    tags: ["blank", "red"],
+    size: { h: 14, w: 21, uom: "cm" }
+  },
+  {
+    item: "mat",
+    qty: 85,
+    tags: ["gray"],
+    size: { h: 27.9, w: 35.5, uom: "cm" }
+  },
+  {
+    item: "mousepad",
+    qty: 25,
+    tags: ["gel", "blue"],
+    size: { h: 19, w: 22.85, uom: "cm" }
+  }
+])
+```
+
+In this case the successful output will be:
+
+```mongodb
+{
+  "acknowledged" : true,
+  "insertedIds" : [
+    ObjectId("64b8f1e5e4b0c8a1d2f3c4b6"),
+    ObjectId("64b8f1e5e4b0c8a1d2f3c4b7"),
+    ObjectId("64b8f1e5e4b0c8a1d2f3c4b8")
+  ]
+}
+```
+
+### 2.6.2. Read Operations
+
+Suppose we have created a collection called `inventory` and inserted some
+documents into it:
+
+```mongodb
+db.inventory.insertMany([
+  { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+  { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "A" },
+  { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+  { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+  { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" }
+]);
+```
+
+To query all documents of a specific collection we can use the `find()` method:
+
+```mongodb
+db.inventory.find()
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  */
+```
+
+> [!NOTE]
+> The `mongosh` will display only the first 20 documents of the result set.  
+> But, if we where to assign the output to a variable, it will hold the whole
+> result set.
+
+If we wanted to specify equality conditions, we can use `<field>:<value>` expressions
+as parameters of the `find()` method:
+
+```mongodb
+db.inventory.find({ status: "D" })
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  *  WHERE status = "D"
+  */
+```
+
+We can also use _query operators_ to specify conditions in the following form:
+`{ <field1>: { <operator1>: <value1>}, ... }`.
+
+In the following example we can see some example of operators:
+
+```mongodb
+// `status` equals either `A` or `D`:
+db.inventory.find({ status: { $in: ["A", "D"] } })
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  *  WHERE status IN ("A", "D")
+  */
+```
+
+```mongodb
+// `status` equals "A" AND `qty` is less than 30:
+db.inventory.find({
+  status: "A",
+  qty: { $lt: 30}
+})
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  *  WHERE status = "A"
+  *    AND qty < 30
+  */
+```
+
+```mongodb
+// `status` equals "A" OR `qty` is less than 30:
+db.inventory.find({
+  $or : [
+    { status: "A" },
+    { qty: { $lt: 30} }
+  ]
+})
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  *  WHERE status = "A"
+  *     OR qty < 30
+  */
+```
+
+```mongodb
+// `status` equals "A" AND either (OR):
+//  - `qty` is less than 30
+//  - `item` starts with "p"
+db.inventory.find({
+  status: "A",
+  $or: [
+    { qty : { $lt: 30} },
+    { item: /^p/ }
+  ]
+})
+
+/**
+  * In SQL
+  *  SELECT *
+  *  FROM inventory
+  *  WHERE status = "A"
+  *    AND ( qty < 30 OR item LIKE "p%" )
+  */
+```
+
+The general **comparison operators** are:
+
+- `$eq`: matches values that are **equal** to a specified value.
+- `$gt`: matches values that are **greater than** a specified value.
+- `$gte`: matches values that are **greater than or equal** to a specified value.
+- `$in`: matches **any of the values** specified in an array.
+- `$lt`: matches values that are **less than** a specified value.
+- `$lte`: matches values that are **less than or equal** to a specified value.
+- `$ne`: matches all values that are **not equal** to a specified value.
+- `$nin`: matches **none of the values** specified in an array.
+
+Further details about the _Comparison Query Operators_ can be found in the
+[official documentation](https://www.mongodb.com/docs/manual/reference/mql/query-predicates/comparison/#std-label-query-selectors-comparison).
+
+### 2.6.3. Update Operations
+
+To update a document there are several methods available, we will see the three
+most important ones:
+
+```mongodb
+db.collection_name.updateOne( <filter>, <update>, <options> )
+db.collection_name.updateMany( <filter>, <update>, <options> )
+```
+
+- The `filter` document is defined as a **query** (like the one we previously
+  analyzed). It specifies the set of document to update.
+- The `update` document specify the modification to apply.
+- The `options` document specify a set of parameters for the modifications.
+
+To use the update operators, we need to pass to the update methods an
+**update document** as follows:
+
+```mongodb
+{
+  <update_operator>: { <field1>: <value1>, ... },
+  <update_operator>: { <field2>: <value2>, ... },
+}
+```
+
+> [!NOTE]
+> A list with all the details of update operators can be found
+> in the [official documentation](https://www.mongodb.com/docs/manual/reference/mql/update/#std-label-update-operators).
+
+Some of the most commonly used update operators are:
+
+- `$currentDate`: sets the value of a field to the current date, either as a
+  `Date` or a `Timestamp`.
+- `$inc`: increments the value of the field by the specified amount.
+- `$min`: only updates the field if the specified value is less than the existing
+- `$max`: only updates the field if the specified value is greater than the existing
+- `$mul`: multiplies the value of the field by the specified amount.
+- `$rename`: renames an existing field _without_ changing its value.
+- `$set`: sets the value of a field in a document, creating it if necessary.
+- `$setOnInsert`: sets the value of a field if an update results in an insert
+  of a document.
+- `$unset`: removes the specified field from a document.
+
+#### 2.6.3.1. Example
+
+Suppose we are working with the following document in the `inventory` collection:
+
+```mongodb
+db.inventory.insertMany([
+  { item: "canvas", qty: 100, size: { h: 28, w: 35.5, uom: "cm" }, status: "A" },
+  { item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+  { item: "mat", qty: 85, size: { h: 27.9, w: 35.5, uom: "cm" }, status: "A" },
+  { item: "mousepad", qty: 25, size: { h: 19, w: 22.85, uom: "cm" }, status: "P" },
+  { item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "P" },
+  { item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+  { item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+  { item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" },
+  { item: "sketchbook", qty: 80, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+  { item: "sketchpad", qty: 95, size: { h: 22.85, w: 30.5, uom: "cm" }, status: "A" }
+]);
+```
+
+We can see some example of usages of the update method in the following code
+blocks:
+
+```mongodb
+// Update the first document that matches the filter by:
+//  - changing the `size.uom` field to "cm"
+//  - changing the `status` field to "P"
+//  - updating the field `lastModified` with the current date
+db.inventory.updateOne(
+  { item: "paper" },
+  {
+    $set: { "size.uom": "cm", status: "P" },
+    $currentDate: { lastModified: true }  // also creates the new field
+  }
+)
+```
+
+```mongodb
+// Update all documents that matches the filter "`qty` is less than 50":
+//  - changing the `size.uom` field to "cm"
+//  - changing the `status` field to "P"
+//  - updating the field `lastModified` with the current date
+db.inventoty.updateMany(
+  { qty: { $lt: 50 } },
+  {
+    $set: { "size.uom": "cm", status: "P" },
+    $currentDate: { lastModified: true }
+  }
+)
+```
+
+#### 2.6.3.2. Replace Operations
+
+To replace **the entire content** of a document, except for the `_id` field,
+to an entirely new document, we can use the `db.collection_name.replaceOne()`
+method.
+
+When replacing a document, the replacement one must consist of **only field/value
+pairs** (i.e., _do not include any update operators_ expressions).
+
+The replacement document **can have different fields** than the original document.
+
+```mongodb
+// Replace the first document where `item: "paper"` with a new document
+db.invenory.replaceOne(
+  { item: "paper" },
+  {
+    item: "paper",
+    instock: [
+      { warehouse: "A", qty: 60 },
+      { warehouse: "B", qty: 40 }
+    ]
+  }
+)
+```
+
+This will change the document from:
+
+```mongodb
+{
+  _id: ObjectId("64b8f1e5e4b0c8a1d2f3c4b6"),
+  item: "paper",
+  qty: 100,
+  size: {
+    "h": 8.5,
+    "w": 11,
+    "uom": "cm"
+  },
+  status: "P",
+  lastModified: ISODate("2024-11-11T12:44:56.129Z")
+}
+```
+
+To:
+
+```mongodb
+{
+  _id: ObjectId("64b8f1e5e4b0c8a1d2f3c4b6"),
+  item: "paper",
+  instock: [
+    { "warehouse": "A", "qty": 60 },
+    { "warehouse": "B", "qty": 40 }
+  ]
+}
+```
+
+### 2.6.4. Delete Operations
+
+To delete an entire collection, we can use the `drop()` method:
+
+```mongodb
+db.inventory.drop()
+```
+
+Instead, we we want to keep the collection, but delete all the documents in it,
+we can use the `deleteMany()` method with an empty filter:
+
+```mongodb
+db.inventory.deleteMany({})
+```
+
+In this case, a typical output where we deleted $N$ elements will be:
+
+```mongodb
+{ "acknowledged" : true, "deletedCount" : N }
+```
+
+Of course, we can specify **criteria** (filters) to identify just a subset
+of documents to delete.
+
+The _filters_ use the same syntax as the one we saw for the _read operations_:
+
+- `{ field: value }` matches documents where the field is equal to the value.
+- `{ field: { $operator: value } }` matches documents where the field satisfies
+
+We can see some examples of delete operations in the following code blocks:
+
+```mongodb
+// Remove all documents where the `status` field is equal to "A"
+db.inventory.deleteMany({ status: "A" })
+```
+
+```mongodb
+// Delete at most one single document where the `status` field is equal to "D"
+db.inventory.deleteOne({ status: "D" })
+```
+
+## 2.7. Database Tools
+
+These tools are part of the `MongoDB Database Tools Package`, which is
+distributed separately from `MongoDB Server`.
+
+The installation depends on the operating system and installation method,
+and it is described in the [official documentation](https://www.mongodb.com/docs/database-tools/).
+
+### 2.7.1. Export Documents
+
+We can use the `mongoexport` command-line tool to produce a `JSON` or `CSV`
+export of data stored in a `MongoDB` instance.
+
+To export a **specified collection** to a specified output file from
+a **local MongoDB instance** (port 27017) we can use the following command:
+
+```sh
+mongoexport --collection=<collectionName> \
+  --db=<dbName> \
+  --fields=<field1[,field2]>
+  --out=<filename.json(-csv)>
+  --type=<json|csv>
+```
+
+If we wanted to export from a specific host and port, we can use:
+
+```sh
+mongoexport --host= <hostAddress> \
+  --port=<portNumber>
+  --collection=<collectionName> \
+  --db=<dbName> \
+  --fields=<field1[,field2]> \
+  --out=<filename.json(-csv)> \
+  --type=<json/csv>
+```
+
+### 2.7.2. Import Documents
+
+The `mongoimport` tool imports content from an `Extended JSON`, `CSV` or `TSV`
+export created by `mongoexport`, or potentially, another **third-party
+export tool**.
+
+> [!NOTE]
+> Since `MongoDB 4.2`, `mongoimport` expects import data to be in
+> **Extended JSON v2.0** by default.  
+> Details on **JSON v2.0** can be found
+> [in the official guide](https://docs.mongodb.com/manual/reference/mongodb-extended-json/)
+
+Some example are the following:
+
+```sh
+# Import from json and create:
+# - collection: `restaurants`
+# - database: `test`
+mongoimport \
+  -c=restaurants \
+  -d=test \
+  --file "file_path.json"
+```
+
+```sh
+# Import from csv and create:
+#  - collection: `athlete`
+#  - database: `test`
+mongoimport \
+  -c=athlete \
+  -d=test \
+  --file "file_path.csv" \
+  --type=csv \
+  --headerline
+```
+
+> [!CAUTION]
+> `mongoimport` only supports data files that are `UTF-8` encoded.
+> Using other formats will almost certainly produce errors.
+
+To ensure that documents are inserted in the same order in which
+they appear in the input file we can use the `--maintainInsertionOrder` option.
+
+This options gives us some reassurances:
+
+- **Insertion Order**
+- **Insertion Workers**: only 1 thread
+- **Error handling**: stop at the first insertion error
+- **Performance**: may be slower
+
+> [!IMPORTANT]
+> `mongoexport` and `mongoimport` **do not preserve** indexes, validation
+> rules, user roles or sharding configurations as they are just **_data
+> exchange tools_**
+>
+> For **full backup and restore operations use**:
+>
+> - `mongodump`: creates a **binary snapshot** of our database
+> - `mongorestore`: rebuilds a database from the snapshot
+>
+> Further information can be found on [the official documentation](https://www.mongodb.com/docs/database-tools/mongodump/).
