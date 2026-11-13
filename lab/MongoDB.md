@@ -29,6 +29,10 @@ title: MongoDB
   - [2.7. Database Tools](#27-database-tools)
     - [2.7.1. Export Documents](#271-export-documents)
     - [2.7.2. Import Documents](#272-import-documents)
+  - [2.8. Query Methods](#28-query-methods)
+    - [2.8.1. Cursor Methods](#281-cursor-methods)
+    - [2.8.2. Embedded and Nested Documents](#282-embedded-and-nested-documents)
+    - [2.8.3. Arrays](#283-arrays)
     <!--toc:end-->
 
 # 2. MongoDB
@@ -804,3 +808,222 @@ This options gives us some reassurances:
 > - `mongorestore`: rebuilds a database from the snapshot
 >
 > Further information can be found on [the official documentation](https://www.mongodb.com/docs/database-tools/mongodump/).
+
+## 2.8. Query Methods
+
+### 2.8.1. Cursor Methods
+
+We will be working over the following collection called `inventory`:
+
+```mongodb
+db.inventory.insertMany([
+{ item: "journal", qty: 25, size: { h: 14, w: 21, uom: "cm" }, status: "A" },
+{ item: "notebook", qty: 50, size: { h: 8.5, w: 11, uom: "in" }, status: "A" },
+{ item: "paper", qty: 100, size: { h: 8.5, w: 11, uom: "in" }, status: "D" },
+{ item: "planner", qty: 75, size: { h: 22.85, w: 30, uom: "cm" }, status: "D" },
+{ item: "postcard", qty: 45, size: { h: 10, w: 15.25, uom: "cm" }, status: "A" }
+]);
+```
+
+When we talked about the `find()` method, we actually omitted that it returns
+a **cursor** to the results.
+
+A **cursor** is an object that **provides access** to the result set of a query
+executed by the `MongoDB` server. It allows **retrieving documents progressively
+in _batches_**, as the application iterates over the results.
+
+This avoids loading the entire result set into client memory at once,
+allowing just **on-demand processing** of large query results.
+
+In the `mongosh`, when the returned cursor is not assigned to a variable,
+it will be automatically iterated **up to the first 20 documents**, hence
+what we said before about the `find()` method.
+
+To manually iterate, we must first assign a variable with the `var` keyword,
+and call one of its method:
+
+```mongodb
+// Equivalent to `db.inventory.find()` but
+// without the 20 documents limit
+var myCursor = db.inventory.find()
+
+while (myCursor.hasNext()) {
+  var myDocument = myCursor.next();
+  var myName = myDocument.item;
+  print (tojson(myName));
+}
+```
+
+To limit the number of documents in the result set, we can use the `limit()` method.
+Instead, if we want to tweak the _starting point_ of the result set, we can use
+the `skip()` method:
+
+```mongodb
+// Returns up to three documents
+db.inventory.find().limit(3);
+
+// Returns all the documents, skipping the first three
+db.inventory.find().skip(3);
+```
+
+Often, when we query for a result set, we want it to be sorted in a specific order.
+To do that in `MongoDB`, we can use the `sort()` method, which takes a
+**sort specification document**:
+
+```mongodb
+// Collection sorted by `qty` in ASCENDING order
+db.inventoty.find().sort({ qty: 1 });
+
+// Collection sorted by `qty` in DESCENDING order
+db.inventoty.find().sort({ qty: -1 });
+
+// Collection sorted:
+//  1. First in ASCENDING order by `status`
+//  2. Then in DESCENDING order by `qty`
+db.collection.find().sort({ status: 1, qty: -1 });
+```
+
+> [!NOTE]
+> If the specified attribute does not exist in a document, it will be placed:
+>
+> - At the top of the result set if the sort order is **descending**.
+> - At the bottom of the result set if the sort order is **ascending**.
+
+Of course it is possible to **combine** the `limit()`, `skip()` and `sort()` methods:
+
+```mongodb
+// Collection:
+//  1. Sorted in DESCENDING order by `qty`
+//  2 Skipping the first two documents
+
+db.inventory.find().sort({ qty: -1 }).skip(2);
+```
+
+> [!NOTE]
+> The two operations `skip()` and `limit()` are commutative with the `sort()` method.
+
+To return the count of documents in a collection that **would match** a `find()`
+query for the collection, we can use the `countDocuments()` method:
+
+```mongodb
+// Count the number of documents with `status` equal to "A"
+db.inventory.countDocuments({ status: "A" });
+```
+
+> [!WARNING]
+> There exists the `.find(...).count()` method, but has been **deprecated** in
+> `MongoDB 5`
+
+### 2.8.2. Embedded and Nested Documents
+
+To match an **Embedded Document** we can use the **query filter**
+document `{ <field>: <value> }`, where `<value>` is the document to match.
+
+For example:
+
+```mongodb
+// Select all documents where `size` equals the document
+// {h: 14, w: 21, uom: "cm" }
+db.inventory.find({ size: { h: 14, w: 21, uom: "cm" } });
+```
+
+Instead, if we want to specify a condition inside an embedded/nested document
+we use **dot notation** to access the field:
+
+```mongodb
+// Select all documents where the field `uom`, nested in `size`, equals "in"
+db.inventory.find({ "size.uom": "in" });
+
+// Select all documents where the field `h`, nested in `size`, is less than 15
+db.inventory.find({ "size.h": { $lt: 15 } });
+
+// Select all documents where:
+// - the field `h`, nested in `size`, is less than 15
+// - the field `uom`, nested in `size`, equals "in"
+// - the field `status` equals "D"
+db.inventory.find({ "size.h": { $lt : 15 }, "size.uom": "in", status: "D" })
+```
+
+### 2.8.3. Arrays
+
+For this part we suppose our data is the following:
+
+```mongodb
+db.inventory.insertMany([
+{ item: "journal", qty: 25, tags: ["blank", "red"], dim_cm: [ 14, 21 ] },
+{ item: "notebook", qty: 50, tags: ["red", "blank"], dim_cm: [ 14, 21 ] },
+{ item: "paper", qty: 100, tags: ["red", "blank", "plain"], dim_cm: [ 14, 21 ] },
+{ item: "planner", qty: 75, tags: ["blank", "red"], dim_cm: [ 22.85, 30 ] },
+{ item: "postcard", qty: 45, tags: ["blue"], dim_cm: [ 10, 15.25 ] }
+]);
+```
+
+To specify **equality condition** on an array we use, once again, the
+query document, where `<value>` is now the **exact array to match** (the order
+is important).
+
+```mongodb
+// Select all documents where the `tags` is exactly equal to ["red", "blank"]
+db.inventory.find({ tags: ["red", "blank"] });
+```
+
+Instead, if order does not matter to us, we can use the `$all` operator:
+
+```mongodb
+// Select all documents where the `tags` array contains both "red" and "blank"
+db.inventory.find({ tags: { $all: ["red", "blank"] } });
+```
+
+If we want to query for documents where the array field contains **at least one**
+element with the **specified value**, we still use the _query document_, but now
+`<value>` will be **just the value to match** (not the whole array):
+
+```mongodb
+// Select all documents where the `tags` array contains the value "red"
+// as one of its elements
+db.inventory.find({ tags: "red" });
+```
+
+We can also use **query filter document**
+`{ <array_field> : { <operator1> : <value1>, ... }}` to specify conditions on the
+**elements of an array**.
+
+```mongodb
+// Select all documents where the array `dim_cm` contains
+// AT LEAST ONE ELEMENT whose value is GREATER than 25
+db.inventory.find({ dim_cm : { $gt : 25 }});
+
+// Select all documents where the array `dim_cm` contains
+// AT LEAST ONE ELEMENT whose value is LOWER than 20
+db.inventory.find({ dim_cm : { $lt : 20 }});
+
+
+// Select all documents where the array `dim_cm` contains A COMBINATION
+// of the following conditions:
+// - AT LEAST ONE value is GREATER than 15
+// - AT LEAST ONE value is LOWER than 20
+// (they can be the same value or different ones)
+db.inventory.find({ dim_cm : { $gt : 15, $lt : 20 }});
+
+// Select all documents where the array `dim_cm` contains
+// AT LEAST ONE ELEMENT whose value is BOTH:
+// - GREATER than 12
+// - LOWER than 30
+db.inventory.find({ dim_cm: {$elemMatch: { $gt: 22, $lt: 30 }}})
+```
+
+We can use **dot notation** for arrays as well. In this case, it
+indicates the **particular index of the array** (_zero-based_).
+
+```mongodb
+// Select all documents where the second element of the array `dim_cm`
+// is GREATER than 25
+db.inventory.find({ "dim.1": { $gt: 25 }})
+```
+
+We can also filter upon the **size of an array** using the `$size` operator:
+
+```mongodb
+// Select all documents where the `tags` array has 3 elements
+db.inventory.find({ tags: { $size: 3 }});
+```
