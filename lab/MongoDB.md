@@ -33,6 +33,12 @@ title: MongoDB
     - [2.8.1. Cursor Methods](#281-cursor-methods)
     - [2.8.2. Embedded and Nested Documents](#282-embedded-and-nested-documents)
     - [2.8.3. Arrays](#283-arrays)
+  - [2.9. Projection Operations](#29-projection-operations)
+    - [2.9.1. Project Specific Array Elements](#291-project-specific-array-elements)
+    - [2.9.2. Null fields](#292-null-fields)
+  - [2.10. Aggregation](#210-aggregation)
+    - [2.10.1. Aggregation Pipeline Mapping SQL](#2101-aggregation-pipeline-mapping-sql)
+    - [2.10.2. Examples of Aggregation Pipelines](#2102-examples-of-aggregation-pipelines)
     <!--toc:end-->
 
 # 2. MongoDB
@@ -64,6 +70,7 @@ CP and AP).
 > - [Document Overview](https://www.mongodb.com/docs/manual/core/document/)
 > - [ATLAS Architecture Guide](https://www.mongodb.com/docs/manual/administration/architecture/)
 > - [CRUD Manual](https:///docs.mongodb.com/manual/crud/)
+> - [Operators](https://docs.mongodb.com/manual/reference/operator/)
 
 ## 2.1. Data Model
 
@@ -519,8 +526,11 @@ The general **comparison operators** are:
 - `$ne`: matches all values that are **not equal** to a specified value.
 - `$nin`: matches **none of the values** specified in an array.
 
-Further details about the _Comparison Query Operators_ can be found in the
-[official documentation](https://www.mongodb.com/docs/manual/reference/mql/query-predicates/comparison/#std-label-query-selectors-comparison).
+> [!TIP]
+> Further informations can be retrieved on the official documentation:
+>
+> - [Find Method](https://docs.mongodb.com/manual/reference/method/db.collection.find/)
+> - [Comparison Query Operations](https://www.mongodb.com/docs/manual/reference/mql/query-predicates/comparison/#std-label-query-selectors-comparison)
 
 ### 2.6.3. Update Operations
 
@@ -914,6 +924,14 @@ db.inventory.countDocuments({ status: "A" });
 > There exists the `.find(...).count()` method, but has been **deprecated** in
 > `MongoDB 5`
 
+<br>
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Cursor Methods](https://www.mongodb.com/docs/manual/reference/method/cursor/).
+> - [Count Documents Method](https://docs.mongodb.com/manual/reference/method/db.collection.countDocuments/)
+
 ### 2.8.2. Embedded and Nested Documents
 
 To match an **Embedded Document** we can use the **query filter**
@@ -1027,3 +1045,469 @@ We can also filter upon the **size of an array** using the `$size` operator:
 // Select all documents where the `tags` array has 3 elements
 db.inventory.find({ tags: { $size: 3 }});
 ```
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Query Embedded Documents](https://docs.mongodb.com/manual/tutorial/query-embedded-documents/)
+> - [Query Arrays](https://docs.mongodb.com/manual/tutorial/query-arrays/)
+
+## 2.9. Projection Operations
+
+By default, queries in `MongoDB` return **all fields** in matching documents.
+
+To limit the amount of data that the database sends to the application, we can
+include a **projection document** to specify/restrict **fields to return**.
+
+We will be considering the following collection:
+
+```mongodb
+db.inventory.insertMany([
+  {
+    item: "journal", status: "A", size: {h: 14, w: 21, uom: "cm"},
+    instock: [{ warehouse: "A", qty: 5}]
+  },
+  {
+    item: "notebook", status: "A", size: {h: 8.5, w: 11, uom: "in"},
+    instock: [ {warehouse: "C", qty: 5}]
+  },
+  {
+    item: "paper", status: "D", size: {h: 8.5, w: 11, uom: "in"},
+    instock: [ {warehouse: "A", qty: 60}]
+  },
+  {
+    item: "planner", status: "D", size: {h: 22.85, w: 30, uom: "cm"},
+    instock: [ {warehouse: "A", qty: 40}]
+  },
+  {
+    item: "postcard", status: "A", size: {h: 10, w: 15.25, uom: "cm"},
+    instock: [ {warehouse: "B", qty: 15}, {warehouse: "C", qty: 35}]
+  }
+]);
+```
+
+A **projection** can explicitly include several fields by setting `<field>: 1`
+in the projection document, or exclude them by setting `<field>: 0`.
+However, we cannot **mix inclusion and exclusion** in the same projection document,
+with the exception of the `_id` field.
+
+```mongodb
+// Returns all documents that match the query, limited to fields item and status
+db.inventory.find(
+  { status: "A" },
+  { item : 1, status: 1, _id: 0 } // Exclude the `_id` field from the result set
+)
+
+// Returns all fields except for the `status` and the
+// `instock` fields in the matching documents
+db.inventory.find(
+  { status: "A" },
+  { status: 0, instock: 0 }
+)
+```
+
+> [!NOTE]
+> By default, the `_id` field is **always included** in the result set, unless
+> we manually exclude it by setting `_id: 0` in the projection document.
+
+We can also return/suppress specific fields from embedded documents using _dot
+notation_:
+
+```mongodb
+// Returns all documents that match the query, limited to fields `item`,
+// `status` and the embedded document `size`
+db.inventory.find(
+  { status: "A" },
+  { item: 1, status: 1, size: 1}
+)
+
+// Returns all documents that match the query, limited to fields `item`,
+// `status` and the embedded field `size.uom`
+db.inventory.find(
+  { status: "A" },
+  { item: 1, status: 1, "size.uom": 1}
+)
+
+// Returns all documents that match the query, except for the fields `status`,
+// `instock` and the embedded field `size.uom`
+db.inventory.find(
+  { status: "A" },
+  { status: 1, instock: 0, "size.uom": 0}   // Will still return `size.h` and `size.w`
+)
+
+
+// Return all documents that match the query, limited to the following fields:
+//  - The `_id` field (returned by default),
+//  - The `item` field,
+//  - The `status` field,
+//  - The `qty` field in the documents embedded in the `instock` array.
+db.inventory.find(
+  { status: "A" },
+  { item: 1, status: 1, "instock.qty": 1}
+)
+```
+
+### 2.9.1. Project Specific Array Elements
+
+For fields that contain arrays, the database provides two **projection
+operators** for manipulating their contents: `$slice` and `$elemMatch`.
+
+```mongodb
+// Returns the documents that match the query, limited to the FIRST element of
+// the `instock` field
+db.inventory.find(
+  { status: "A" },
+  { instock: { $slice: 1 }}
+)
+
+// Returns the documents that match the query, limited to the FIRST TWO elements
+// of the `instock` field
+db.inventory.find(
+  { status: "A" },
+  { instock: { $slice: 2 }}
+)
+
+// Returns the documents that match the query, limited to the LAST element of
+// the `instock` array
+db.inventory.find(
+  { status: "A" },
+  { instock: { $slice: -1 }}
+)
+
+// Returns the documents that match the query, limited to the LAST THREE elements
+// of the `instock` array
+db.inventory.find(
+  { status: "A" },
+  { instock: { $slice: -3 }}
+)
+```
+
+The `$elemMatch` operator projects the _first matching element from an array_
+based on a condition:
+
+```mongodb
+// Returns the documents that match the query, limited to the FIRST element
+// of the `instock` array that has a `qty` GREATER than 20
+db.inventory.find(
+  { status: "A" },
+  { instock: { $elemMatch: { qty: { $gt: 20 }}}}
+)
+```
+
+Unlike `$elemMatch`, `$filter` returns **all elements** of an array that match
+the specified condition. However, it has a slightly more complex syntax,
+as it requires an **aggregation pipeline**:
+
+```mongodb
+// Returns the documents that match the query, limited to ALL the elements
+// of the `instock` array that has a `qty` LESS than 10
+db.inventory.find(
+  { status: "A" },
+  {
+    instock: {
+      $filter: {
+        input: "$instock",                      // `$` refers to the `instock` field
+        as: "stock",                            // creates a local variable
+        cond: { $gt: ["$$stock.qty", 20] }      // `$$` refers to the local variable
+      }
+    }
+  }
+)
+```
+
+> [!WARNING]
+> Notice the difference between `$` and `$$`:
+>
+> - `$instock` refers to a **field in the current document**
+> - `$$stock` refers to a **local variable** defined using `as`
+> - `$$stock.qty` accesses the `qty` attribute of the **local variable**
+
+### 2.9.2. Null fields
+
+`MongoDB` supports the `null` value, which is used to represent **undefined fields**.
+
+Let's consider the following collection:
+
+```mongodb
+db.inventory.insertMany([
+  { _id: 1, item: null },
+  { _id: 2 },
+  { _id: 3, item: "book" }
+])
+```
+
+The `{ item: null }` query will match documents that either:
+
+- Contain the `item` field with a value of `null`
+- Do not contain the `item` field at all
+
+Thus if we ran `db.inventory.find({ item: null })`, the result set would include
+both documents with `_id: 1` and `_id: 2`.
+
+To query documents that **contain fields of a _specific type_** we can the
+`$type` operator:
+
+```mongodb
+// Returns all documents where the `item` field is of type `string`
+db.inventory.find({ item: { $type: 2 } })
+
+// Returns all documents where the `item` field is of type `null`
+db.inventory.find({ item: { $type: 10 } })
+```
+
+> [!NOTE]
+> For further information about the `$type` operator, please refer to the
+> [official documentation](https://www.mongodb.com/docs/manual/reference/operator/query/type/#mongodb-query-op.-type).
+
+We can also use the `$exists` operator to filter documents based on the
+**existence of a field**:
+
+```mongodb
+// Returns all documents where the `item` field exists
+db.inventory.find({ item: { $exists: true } })
+
+// Returns all documents where the `item` field does not exist
+db.inventory.find({ item: { $exists: false } })
+```
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Projection from Query Results](https://docs.mongodb.com/manual/tutorial/project-fields-from-query-results/)
+> - [Null fields](https://docs.mongodb.com/manual/tutorial/query-for-null-fields/)
+
+## 2.10. Aggregation
+
+Aggregation operations **process data records** and **_return computed results_**.
+
+Aggregation operation **group** values from multiple documents together
+and can perform a **variety of operations** on the grouped data to
+**_return a single result_**.
+
+`MongoDB` provides two ways to perform aggregation:
+
+- **Aggregation Pipeline**
+- **Single Purpose Aggregation Methods** (we will not cover them in this course)
+
+In the **Aggregation Pipeline** way, documents enter a **multi-stage
+pipeline** that transforms them into aggregated results.
+
+Considering the following collection:
+
+```mongodb
+db.orders.insertMany([
+  { cust_id: "A123", amount: 500, status: "A" },
+  { cust_id: "A123", amount: 250, status: "A" },
+  { cust_id: "B212", amount: 200, status: "A" },
+  { cust_id: "A123", amount: 300, status: "D" }
+])
+```
+
+For example we could:
+
+1. Filter documents to pass only those that match the specified condition(s)
+   `{ status: "A" }`
+2. Group them by a common field `_id`, and calculate the sum of the amount of a
+   numeric field `amount` for each unique group
+
+This translates to the following aggregation pipeline:
+
+```mongodb
+db.orders.aggregate(
+/* First Stage */  { $match: { status: "A" }},
+/* Second Stage */ { $group: { _id: "$cust_id", total: { $sum: "$amount" }}}
+)
+```
+
+As we said before, the `$` character is used to access the value of a field
+in the current document, in this case the `cust_id` and `amount` fields.
+
+The result of the aggregation pipeline will be:
+
+```mongodb
+[
+  { "_id" : "A123", "total" : 750 },
+  { "_id" : "B212", "total" : 200 }
+]
+```
+
+The aggregation pipeline consists to an arbitrary number of **stages**, where each
+one transforms the documents as they pass through the pipeline.
+
+Pipeline stages **_do not need to produce_** one output document for
+every input document. For example, a `$match` stage can filter out documents
+during the pipeline, and a `$group` stage can combine multiple input documents
+into a single one.
+
+Pipeline stages can appear **multiple times** into the pipeline, with the exception
+of `$out`, `$merge` and `$geoNear` stages, which **can appear only once**.
+
+### 2.10.1. Aggregation Pipeline Mapping SQL
+
+In the following table, we can see a mapping between the **SQL** and the
+**Aggregation Pipeline**:
+
+<div class="flexbox" markdown="1">
+
+|   `SQL`    | `MongoDB Aggregation` |                                       Explanation                                       |
+| :--------: | :-------------------: | :-------------------------------------------------------------------------------------: |
+|  `WHERE`   |       `$match`        |                                    Filter documents                                     |
+| `GROUP BY` |       `$group`        | Group document by value.<br>Afterwards, accumulator expression will apply to each group |
+|  `HAVING`  |       `$match`        |                                    Filter documents                                     |
+|  `SELECT`  |      `$project`       |              Reshape documents, including, excluding and adding new fields              |
+| `ORDER BY` |        `$sort`        |                                    Reorder document                                     |
+|  `SUM()`   |        `$sum`         |                 Return sum of each group.<br>Ignores non-numeric values                 |
+| `COUNT()`  |        `$sum`         |                 Return sum of each group.<br>Ignores non-numeric values                 |
+|    N/A     |       `$unwind`       |           Deconstructs an array and returns a document for each array element           |
+
+</div>
+
+> [!CAUTION]
+> For the sake of knowledge, there exist also the mapping of the `JOIN` operation
+> with the `$lookup` stage, which performs the _left outer join_ operation
+> between two collections.
+>
+> However, it is **_FORBIDDEN_** to use it in this course, as it is
+> **_not a good practice_**.
+
+### 2.10.2. Examples of Aggregation Pipelines
+
+The following examples will use the **Zipcodes collection** available
+from [the official mongodb collections](media.mongodb.org/zips.json).
+
+We can use `mongoimport` to load the dataset into our `mongod` instance.
+
+Each document in the collection has the following structure:
+
+```json
+{
+  "_id": "10280",
+  "city": "NEW YORK",
+  "state": "NY",
+  "pop": 5574,
+  "loc": [-74.016323, 40.710537]
+}
+```
+
+Let's now see some examples of aggregation pipelines:
+
+<p class="subt"> Return States with Populations above 10 Million </p>
+
+<div class="grid2">
+<div class="">
+
+The query on the right performs the following operations:
+
+1. Groups the document by `state` and **sums** the population of each group. The
+   output will be a document consisting of two fields: `_id` (the state) and
+   `totalPop` (the total population of the state).
+2. Filters the document produced in the first stage, maintaining only the
+   states with a total population greater than 10 million.
+
+</div>
+<div class="">
+
+```mongodb
+db.zipcodes.aggregate([
+  { $group: { _id: "$state", totalPop: { $sum: "$pop" }}},
+  { $match: { totalPop: { $gte: 10*1000*1000 }}}
+])
+```
+
+</div>
+</div>
+
+<p class="subt"> Return Average City Population by State </p>
+
+<div class="grid2">
+<div class="">
+
+The query on the right performs two `$group` operations:
+
+1. The first one groups the documents by **the combination of `state` and `city`**,
+   using the `$sum` expression to calculate the total population of each combination.
+2. The second stage, groups documents in the pipeline by the `"_id.state"` field,
+   using the `$avg` expression to calculate the average city population `avgCityPop`
+   for each state, outputting a document for each state.
+
+</div>
+<div class="">
+
+```mongodb
+db.zipcodes.aggregate([
+  { $group: { _id: { state: "$state", city: "$city" }, pop: { $sum: "$pop"}}},
+  { $group: {_id: "$_id.state"}, avgCityPop: { $avg: "$pop" }}
+])
+```
+
+</div>
+</div>
+
+<p class="subt"> Return Largest and Smallest Cities by state </p>
+
+<div class="grid2">
+<div class="">
+
+This is a bit more complex than the queries we have seen so far.
+
+It performs _four_ different stages:
+
+1. We filter the document by grouping them by the combination of `state` and
+   `city`, and summing the population of each combination, to obtain the total
+   population of each city.
+2. We then `$sort` the output of the first stage in **ascending order** by population.
+   This means that now the **city with the smallest population** will be the
+   **first document**, while the **city with the largest population** will be
+   the **last**.
+3. We perform another `$group` operation, this time grouping by `state`, and creating
+   four new fields using the `$first` and `$last` expressions:
+   - `biggestCity`: the name of the city with the largest population in the state
+   - `biggestPop`: the largest population in the state
+   - `smallestCity`: the name of the city with the smallest population in the state
+   - `smallestPop`: the smallest population in the state
+4. This last stage is not strictly necessary, but it is used to **reshape the output**
+   of the previous stage. Using the `$project` operation, we rename the `_id`
+   field to `state`, and we create two new embedded documents: `biggestCity`
+   and `smallestCity`. They contain respectively the name and population of the
+   biggest and smallest cities in each state. Furthermore, we exclude the `_id`
+   field from the output by setting it to `0`.
+
+</div>
+<div class="">
+
+```mongodb
+db.zipcodes.aggregate([
+  {
+    $group : {
+      _id: { state: "$state", city: "$city"},
+      pop: { $sum: "$pop" }}
+  },
+  { $sort: { pop : 1 }}
+  {
+    $group : {
+      _id: "$_id.state",
+      biggestCity:  { $last: "$_id.city" },
+      biggestPop:   { $last: "$pop" },
+      smallestCity: { $first: "$_id.city" },
+      smallestPop:  { $first: "pop"}
+    }
+  }
+  {
+    $project: {
+      _id: 0,
+      state: "$_id",
+      biggestCity:  { name: "$biggestCity",  pop: "$biggestPop" },
+      smallestCity: { name: "$smallestCity", pop: "$smallestPop" }
+    }
+  }
+])
+```
+
+</div>
+</div>
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Aggregation Stages](https://www.mongodb.com/docs/manual/reference/mql/aggregation-stages/#std-label-aggregation-pipeline-operator-reference)
+> - [Aggregation Pipelines](https://www.mongodb.com/docs/manual/core/aggregation-pipeline/)
