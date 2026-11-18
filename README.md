@@ -120,7 +120,7 @@ The timeline will be something like this:
    2. Project idea discussion
    3. Project Development
 
-## Lab
+## Laboratory Classes
 
 The lab class will be delivered in general on Tuesday afternoon.
 
@@ -155,6 +155,7 @@ prerequisites of this course:
 
 1. [Redis](./lab/Redis)
 1. [MongoDB](./lab/MongoDB)
+1. [MongoDB and Java](./lab/MongoDB%20and%20Java)
 
 ## 📜 Disclaimer
 
