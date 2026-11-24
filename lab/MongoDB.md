@@ -39,6 +39,17 @@ title: MongoDB
   - [2.10. Aggregation](#210-aggregation)
     - [2.10.1. Aggregation Pipeline Mapping SQL](#2101-aggregation-pipeline-mapping-sql)
     - [2.10.2. Examples of Aggregation Pipelines](#2102-examples-of-aggregation-pipelines)
+  - [2.11. Indexes](#211-indexes)
+    - [2.11.1. Default Index](#2111-default-index)
+    - [2.11.2. Creating an Index](#2112-creating-an-index)
+    - [2.11.3. Compound Indexes](#2113-compound-indexes)
+    - [2.11.4 Indexing Embedded Documents](#2114-indexing-embedded-documents)
+    - [2.11.5. Indexing Arrays](#2115-indexing-arrays)
+    - [2.11.6. Advanced Indexes](#2116-advanced-indexes)
+    - [2.11.7. Type of Indexes](#2117-type-of-indexes)
+    - [2.11.8. How Index Work](#2118-how-index-work)
+  - [2.12. Evaluating Queries Performance](#212-evaluating-queries-performance)
+    - [2.12.1. Compare Performance of Indexes](#2121-compare-performance-of-indexes)
     <!--toc:end-->
 
 # 2. MongoDB
@@ -1511,3 +1522,520 @@ db.zipcodes.aggregate([
 >
 > - [Aggregation Stages](https://www.mongodb.com/docs/manual/reference/mql/aggregation-stages/#std-label-aggregation-pipeline-operator-reference)
 > - [Aggregation Pipelines](https://www.mongodb.com/docs/manual/core/aggregation-pipeline/)
+
+## 2.11. Indexes
+
+Indexes support the **efficient execution** of _read queries_.
+
+Without indexes, `MongoDB` must perform a _collection scan_, i.e. scan **every
+document** in a collection to **select** those document that **match** a **query**
+statement.
+
+Instead, if an appropriate index exists for a query, `MongoDB` can use it
+to **limit** the number of documents it must inspect.
+
+An **index** is a _special data structure_ that stores a **small portion of the
+collection's data set** in an easy-to-traverse form.
+
+The index stores the value of a **specific field** or **set of fields**,
+**ordered** by the value of the field.
+
+The ordering of the index entries supports efficient **equality matches** and
+**range-based** query operations.
+
+In addition, `MongoDB` can **_return sorted results_** by using the ordering
+in the index.
+
+In `MongoDB`, indexes are defined at the **collection level**, and are
+supported for **any field or sub-field** of the document in a collection.
+
+For example, if we have a collection with a numeric attribute `score`, we
+could have an index of this field on which make access when performing
+queries like:
+
+```mongodb
+db.users.find({ score: { $gt: 30 }}).sort({ score: -1 })
+```
+
+<img class="" src="./images/mongodb/index-example.png"
+      alt="Index Example">
+
+The performance are heavily improved by the usage of the index:
+
+- **Without index**: we have to scan everything for any type of query $O(n)$
+- **With Index**: since it is sorted, we can use either _binary search_ for
+  single value queries $O(\log n)$, or more in general only needed
+  iteration over the range of the $k$ desired values $O(k)$
+
+Of course, the improvement in performance comes at some costs:
+
+- **Need of more storage space**: we now have to store also the index
+  beside the collection itself
+- **Index maintenance overhead**: every time we insert, update or delete a document,
+  the indexes must be updated as well, which can slow down write operations.
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Indexes](https://www.mongodb.com/docs/manual/indexes/)
+
+### 2.11.1. Default Index
+
+`MongoDB` automatically creates a **_unique index_** on the `_id` field during
+the creation of a collection.
+
+> [!NOTE]
+> **Unique Indexes** ensures that the indexed fields **_do not store
+> duplicate values_**.  
+> It is the equivalent of the `UNIQUE` constraint in `SQL`.
+
+The `_id` index **prevents** clients from inserting two document
+with the same `_id` value into the same collection.
+
+The `_id` index **_cannot be dropped_**,
+
+This index allows for **fast lookups** of documents by their `_id` field,
+allowing for more performant lookups when we want to use _document linking_.
+
+### 2.11.2. Creating an Index
+
+To define an index we can use the following method:
+
+```mongodb
+db.collection.createIndex(keys, options)
+```
+
+Where:
+
+- `keys` is a document that contains the field-value pairs where:
+  - `field` is the _index key_
+  - `value` describes the type of index for that field. It takes value
+    `1` for _ascending order_ and `-1` for _descending order_.
+- `options`: is a document which contains a set of options that controls
+  the creation of the index.
+
+The method creates an index **_only if_** an index with the same specification
+does not already exist.
+
+For example, if we wanted to create an index for the `zipcodes` collection
+on the population field `pop`:
+
+```mongodb
+db.zipcodes.createIndex(
+  { pop: 1 },
+  { name: "query for population" }
+)
+```
+
+This will produce an output that describes the index that was created:
+
+```json
+{
+  "createdCollectionAutomatically": false,
+  "numIndexesBefore": 1,
+  "numIndexesAfter": 2,
+  "ok": 1
+}
+```
+
+For a **singe-field index** and sort operation, the **sort order** of the key
+**_does not matter_**.
+
+To get all index names we can use the `.getIndexes()` method.
+
+Beware that we **cannot rename** an index once created. If we want to change
+the name the only possible course is to _drop it_ with `dropIndex(name)`
+method and _create a new one_.
+
+### 2.11.3. Compound Indexes
+
+We can also create **compound indexes** on multiple fields, which can support
+queries for **_any prefix_** of the indexed fields.
+
+In this case the **order** of fields listed in a compound index **_does matter_**.
+
+<figure class="">
+<img class="" src="./images/mongodb/compound-index.png"
+      alt="Compound Index Example">
+<figcaption>
+
+Had we inverted the index order into `{ score: -1, userId: 1}`, the final ordering
+of the index would have been different.
+
+</figcaption>
+</figure>
+
+We can specify a sort query on **all the keys** of the index or on a **subset**.
+
+However, the sort keys **must be listed in _the same order_** as they appear
+in the index.
+
+For example, if we had an index key pattern `{ a: 1, b: 1 }`, it is able to support
+sorting on `{ a: 1, b: 1 }` but not on `{ b: 1, a: 1 }`.
+
+For a query to use a compound index for a sort, the specified sort
+direction for all keys must match the index key pattern or match the
+inverse of the index key pattern.
+
+For example, the key pattern on the image `{ userId: 1, score: -1 }` can support
+sorts on `{ a: 1, b: -1 }`, `{ a: -1, b: 1 }` or simply `{ a: 1 }`, `{ a: -1 }`
+but **not** on `{ a: -1, b: -1 }`, `{a: 1, b: 1}` or on the `b` field.
+
+This does not mean that the database will not perform the `{ a: -1, b: -1 }` sort,
+but rather that it will **not use the index** to perform the sort, and will instead
+perform a **collection scan** and sort the results in memory.
+
+> [!TIP]
+> A compound index can support sorted queries on the _first $1 \le k \le n$ fields_
+> of the index, as long the ordering is **the one specified in the index** or in
+> **its complement** (every field is in the reverse order than the one specified).
+
+### 2.11.4 Indexing Embedded Documents
+
+Indexes can be created on keys in **embedded documents** in the same
+way they are created on normal keys.
+
+Suppose we gave a collection of document like the following:
+
+```json
+{
+  "username": "sid",
+  "loc": {
+    "ip": "1.2.3.4",
+    "city": "Springfield",
+    "state": "NY"
+  }
+}
+```
+
+We can define an index on the sub-field `city`:
+
+```mongodb
+db.users.createIndex({ "loc.city": 1 })
+```
+
+We can also **index the entire document** `db.users.createIndex({ loc: 1 })`, which
+will create an index where the **key** is the entire `loc` document.
+
+This type of indexes are rarely used, as they do not bring relevant improvements.
+
+Furthermore, this type of indexes cannot be used to query sub-fields of the document.
+
+### 2.11.5. Indexing Arrays
+
+Let suppose to have a collection of posts extracted from a social network. Each
+post includes a set of comments modelled as an array of documents:
+
+```mongodb
+{
+  _id: 1,
+  title: "post title",
+  body: "post body",
+  comments = [
+    { text: "this is the first comment", date: "2016-05-18T16:00:00Z" },
+
+    { text: "this is the second comment", date: "2016-05-18T16:10:00Z" },
+  ]
+}
+```
+
+We can create an index on the `date` sub-field of the field comments as follows:
+
+```mongodb
+db.blog.createIndex({ "comments.date" : 1 })
+```
+
+For this index, supposing we only have the document in the example, the following
+two entries are created:
+
+<div class="flexbox" markdown="1">
+
+| Index key: `comments.date` | Document Reference: `_id` |
+| :------------------------: | :-----------------------: |
+|   `2016-05-18T16:00:00Z`   |            `1`            |
+|   `2016-05-18T16:10:00Z`   |            `1`            |
+
+</div>
+
+Notice that indexing an array **_creates an index entry foe each element of the
+array_**. If a post had 20 comments, the index would have 20 entries for that post.
+
+**Multi-key indexes** can be more expensive to maintain than single key indexes,
+increasing storage requirements and the cost of insertions and deletions.
+
+Updates may also require modifying multiple index entries, depending on which
+values change.
+
+Let's now consider a collection composed by documents like the following:
+
+```mongodb
+{
+  _id: 1,
+  item: "ABC",
+  ratings: [ 2, 5, 9 ]
+}
+```
+
+If we create an index `db.survey.createIndex({ ratings: 1 })`
+the index contains three keys, each pointing to the same document.
+
+Indexes or array elements **_do not keep any notion of position_**, thus we
+cannot use this index for a query that is looking for a specific array element.
+
+However, the index can be used to support _range-based queries_ on the indexed array
+elements:
+
+```mongodb
+db.coll.find({ ratings: { $elemMathc: { $gt: 6 }}})
+```
+
+### 2.11.6. Advanced Indexes
+
+`MongoDB` offers the possibility of defining several **advanced indexes**:
+
+- **Geospatial Index**: supports efficient queries of geospatial coordinate data.
+  `MongoDB` provides _two special indexes_:
+  - **2d indexes**: they use planar geometry when returning results
+  - **2dsphere indexes**: they use spherical geometry to return results
+- **Text Index**: `MongoDB` provides text indexes to support _text search
+  queries_ on string content. Text indexes can include any field whose value is
+  a string or an array of string elements.
+- **Hash Index**: `MongoDB` supports hash based sharding and indexes the hash
+  of the value of a field. Only support equality matches and cannot support
+  range-based queries.
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Geospatial Indexes](https://www.mongodb.com/docs/manual/core/indexes/index-types/index-geospatial)
+> - [Text Indexes](https://www.mongodb.com/docs/manual/core/indexes/index-types/index-text/)
+> - [Hash Indexes](https://www.mongodb.com/docs/manual/core/indexes/index-types/index-hashed/)
+
+### 2.11.7. Type of Indexes
+
+There are several types of indexes that can be created in `MongoDB`:
+
+- **Unique Indexes**: The unique property for an index causes MongoDB to
+  **reject duplicate** values for the indexed field.
+- **Partial Indexes**: only index the documents in a collection that meet a
+  specified filter expression. By indexing a subset of the documents in a collection,
+  partial indexes have lower storage requirements and reduced performance costs
+  for index creation and maintenance.
+- **Sparse Indexes**: the sparse property of an index ensures that the index
+  **only contain entries for documents that have the indexed field**.
+  The index skips documents that do not have the indexed field.
+- **TTL Indexes**: are special indexes that `MongoDB` can use to automatically
+  remove documents from a collection after a certain amount of time. This is
+  ideal for certain types of information like machine generated event data, logs,
+  and session information that only need to **persist in a database for a finite
+  amount of time**.
+
+> [!TIP]
+> For further informations we can refer to the official documentation:
+>
+> - [Unique Indexes](https://www.mongodb.com/docs/manual/core/index-unique/)
+> - [Partial Index](https://docs.mongodb.com/manual/core/index-partial/)
+> - [Sparse Index](https://docs.mongodb.com/manual/core/index-sparse/)
+> - [TTL Index](https://docs.mongodb.com/manual/core/index-ttl/)
+
+### 2.11.8. How Index Work
+
+<div class="grid2">
+<div class="">
+
+`MongoDB` uses a **B-tree** index to iterate over the index entries, performing
+two main operation:
+
+1. **Index Seek**: It find the starting point navigating the B-tree to locate
+   the first matching key, without needing to examine all preceding keys.  
+   The access costs in $\sim O(\log N)$, where $N$ is the total number of
+   keys in the index
+2. **Index Scan**: It iterates over the index entries in order, starting from the
+   first matching key, until it finds the last. The scanning costs depends on the
+   number of **keys examined** $K$, for a cost of $\sim O(K)$.
+
+The total cost on an **index search** is therefore $\sim O(K + \log N)$.
+
+</div>
+<div class="">
+<figure class="75">
+<img class="80" src="./images/mongodb/b-tree-index.png"
+      alt="B-Tree Index Example">
+<figcaption>
+
+The root acts as an **index of indexes**, telling us where to look
+to locate the desired key without needing to scan all the preceding ones.
+
+</figcaption>
+</figure>
+</div>
+</div>
+
+## 2.12. Evaluating Queries Performance
+
+Suppose we have the following collection:
+
+```mongodb
+{ _id : 1, item : "f1", type: "food", quantity: 500 }
+{ _id : 2, item : "f2", type: "food", quantity: 100 }
+{ _id : 3, item : "p1", type: "paper", quantity: 200 }
+{ _id : 4, item : "p2", type: "paper", quantity: 150 }
+{ _id : 5, item : "f3", type: "food", quantity: 300 }
+{ _id : 6, item : "t1", type: "toys", quantity: 500 }
+{ _id : 7, item : "a1", type: "apparel", quantity: 250 }
+{ _id : 8, item : "a2", type: "apparel", quantity: 400 }
+{ _id : 9, item : "t2", type: "toys", quantity: 50 }
+{ _id : 10, item : "f4", type: "food", quantity: 75 }
+```
+
+To evaluate the performance of a query, we can chain the `cursor.explain("executionStats")`
+cursor method to the end of the find command.
+
+For example:
+
+```mongodb
+db.inventory.find({ quantity: { $gte: 100, $lte: 200 }}).explain("executionStats")
+```
+
+This will return something along the lines of this:
+
+```json
+{
+  "queryPlanner": {},
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 3,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 0,
+    "totalDocsExamined": 10,
+    "executionStages": {
+      "stage": "COLLSCAN"
+      //...
+    }
+    //...
+  }
+  //...
+}
+```
+
+We can confront the performance of the _same query_ had we first defined the
+index `db.inventory.createIndex({ quantity: 1 })`:
+
+```json
+{
+  "queryPlanner": {},
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 3,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 3,
+    "totalDocsExamined": 3,
+    "executionStages": {
+      //...
+    }
+    //...
+  }
+  //...
+}
+```
+
+We can notice how the number of total documents examined has dropped from `10`
+to `3`, and the number of total keys examined has increased from `0` to `3`, as
+the query is now using the index.
+
+### 2.12.1. Compare Performance of Indexes
+
+Consider the following query:
+
+```mongodb
+db.inventory.find({ type: "food", quantity: { $gte: 100, $lte: 300 }})
+```
+
+Which returns:
+
+```mongodb
+{ _id : 2, item : "f2", type: "food", quantity: 100 }
+{ _id : 5, item : "f3", type: "food", quantity: 300 }
+```
+
+We can define **two compound indexes**:
+
+- `db.inventory.createIndex( { quantity: 1, type: 1 } )`: orders by `quantity`
+  first and then by the `type` field.
+- `db.inventory.createIndex( { type: 1, quantity: 1 } )`: orders by `type`
+  first and then by the `quantity` field.
+
+> [!WARNING]
+> We should avoid having both indexes in the same collection, as it is
+> **_not a good practice_**.  
+> However, it can be useful to have them both to produce statistics to compare for
+> our final decision.
+
+To find which one of the two has a better performance for our query,
+we can use the `hint()` method to **force the query to use a specific index**:
+
+```mongodb
+db.inventory
+  .find( { quantity: { $gte: 100, $lte: 300 }, type: "food" } )
+  .hint({ quantity: 1, type: 1 })
+  .explain("executionStats")
+```
+
+That will produce:
+
+```json
+{
+  "queryPlanner": {},
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 2,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 5,
+    "totalDocsExamined": 2,
+    "executionStages": {
+      //...
+    }
+    //...
+  }
+  //...
+}
+```
+
+Had we used the second index instead:
+
+```mongodb
+db.inventory
+  .find( { quantity: { $gte: 100, $lte: 300 }, type: "food" } )
+  .hint({ type: 1, quantity: 1 })
+  .explain("executionStats")
+```
+
+We would have obtained:
+
+```json
+{
+  "queryPlanner": {},
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": 2,
+    "executionTimeMillis": 0,
+    "totalKeysExamined": 2,
+    "totalDocsExamined": 2,
+    "executionStages": {
+      //...
+    }
+    //...
+  }
+  //...
+}
+```
+
+We can easily see how the second index has a better performance, as it only
+examines `2` keys instead of `5`.
+
+<img class="" src="./images/mongodb/index-performance.png"
+      alt="Index Performance Example">
+
+> [!TIP]
+> `MongoDB` provides an [official ESR guideline](https://www.mongodb.com/docs/manual/tutorial/equality-sort-range-guideline/)
+> for creating indexes.
