@@ -24,7 +24,13 @@ title: MongoDB and Java
     - [3.7.5. Limit and Skip Stages](#375-limit-and-skip-stages)
     - [3.7.6. Unwind Stage](#376-unwind-stage)
   - [3.8. Create Indexes](#38-create-indexes)
-  <!--toc:end-->
+  - [3.9. Clustering](#39-clustering)
+    - [3.9.1. Write Concern Levels](#391-write-concern-levels)
+    - [3.9.2. Read Concern Levels](#392-read-concern-levels)
+    - [3.9.3. Configure Replica Set on localhost](#393-configure-replica-set-on-localhost)
+    - [3.9.4. Access a Replica Set from Java](#394-access-a-replica-set-from-java)
+    - [3.9.5. Configure a Distributed Replica Set](#395-configure-a-distributed-replica-set)
+    <!--toc:end-->
 
 # 2. MongoDB Authentication
 
@@ -534,3 +540,320 @@ collection.createIndex(
 // OR
 collection.createIndex(Indexes.ascending(<field1>, <field2>...));
 ```
+
+## 3.9. Clustering
+
+There are several `WriteConcern` levels that can be set to control the **acknowledgment
+of write operations** inside a cluster.
+
+<img class="" src="./images/mongodb/java/write_concern_levels.png"
+      alt="Write Concern Levels">
+
+### 3.9.1. Write Concern Levels
+
+```java
+// Write concern at client level
+MongoClient mongoClient = MongoClients.create(
+  "mongodb://localhost:27018,localhost:27019,localhost:27020/" +
+  "?w=2&wtimeoutMS=5000"
+);
+
+// Write concern at database level
+MongoDatabase db = mongoClient.getDatabase("LSMDB")
+  .withWriteConcern(WriteConcern.W2);
+
+// Write concern at collection level
+MongoCollection<Document> myColl = db.getCollection("students")
+  .withWriteConcern(WriteConcern.W2);
+```
+
+### 3.9.2. Read Concern Levels
+
+```java
+// Read preference at client level
+MongoClient mongoClient = MongoClients.create(
+  "mongodb://localhost:27018,localhost:27019,localhost:27020/" +
+  "?readPreference=secondary"
+);
+
+// Read preference at database level
+MongoDatabase db = mongoClient.getDatabase("LSMDB")
+  .withReadPreference(ReadPreference.secondary());
+
+// Read preference at collection level
+MongoCollection<Document> myColl = db.getCollection("students")
+  .withReadPreference(ReadPreference.secondary());
+```
+
+We can also configure **tags** to specific members of the cluster.
+
+```java
+
+// Tagged read preference for "dc" (data_center) and "west" keyword
+Tag westTag = new Tag("dc", "west");
+
+ReadPreference readPref = ReadPreference.secondary()
+  .withTagSet(new TagSet(westTag));
+
+MongoCollection<Document> myColl = db.getCollection("students")
+  .withReadPreference(readPref);
+
+myColl.find().foerEach(doc -> System.out.println(doc.toJson()));
+```
+
+### 3.9.3. Configure Replica Set on localhost
+
+We will create three `mongod` instances on the same machine,
+on ports `27018` , `27019` and `27020`.
+
+The first step is to create a _data directory_ for each member:
+
+```sh
+mkdir -p ~/data/r{1,2,3}
+```
+
+After that, we need to **open 3 terminals** and start three `mongod` instances
+in **_replica set mode_**, with _the same name_:
+
+```sh
+# Terminal 1
+mongod --replSet rd0 \
+  --dbpath ~/data/r1 \
+  --port 27018 \
+  --bind_ip localhost \
+  --oplogSize 200
+
+# Terminal 2
+mongod --replSet rd0 \
+  --dbpath ~/data/r2 \
+  --port 27019 \
+  --bind_ip localhost \
+  --oplogSize 200
+
+# Terminal 3
+mongod --replSet rd0 \
+  --dbpath ~/data/r3 \
+  --port 27020 \
+  --bind_ip localhost \
+  --oplogSize 200
+```
+
+`--oplogSize` indicates the size of the **operation log** in MB for each member.
+
+After creating the three instances, we open a fourth terminal and connect to
+one of these instances with `mongosh`:
+
+```sh
+mongosh --port 27018
+```
+
+> [!NOTE]
+> The default standalone `MongoDB` service port is `27017`, so we need
+> to specify the port number to connect to one of the new instances.
+
+Once we are connected, inside the `mongosh` we have to **define the configuration**:
+
+```mongodb
+rsconf = {
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "localhost:27018" },
+    { _id: 1, host: "localhost:27019" },
+    { _id: 2, host: "localhost:27020" }
+  ]
+};
+```
+
+At this point, we can **initiate the replica set ONCE**, and check the status (i.e.,
+which member is `PRIMARY` and which are `SECONDARY`):
+
+```mongodb
+rs.initiate(rsconf);
+
+rs.status();
+```
+
+To change the configuration, we need to be connected to the `PRIMARY` member
+and run:
+
+```mongodb
+cfg = rs.conf();
+cfg.members[1].priority = 2; // Change priority of member 1
+rs.reconfig(cfg);
+```
+
+When defining the configuration, we can also set **priorities** (
+member with highest property will be preferred in the elections)
+and **tags** (for read preferences).
+We can also set the `settings` for a **default write concern** for the replica
+set.
+
+```mongodb
+rsconf = {
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "localhost:27018", priority: 0.5, tags: { dc: "east" } },
+    { _id: 1, host: "localhost:27019", priority: 1, tags: { dc: "west" } },
+    { _id: 2, host: "localhost:27020", priority: 3, tags: { dc: "mid" } }
+  ],
+  settigns: {
+    setDefaultRWConcern: { w: "majority", wtimeout: 5000 }
+  }
+};
+```
+
+### 3.9.4. Access a Replica Set from Java
+
+There are two main methods to access a replica set from a Java application:
+
+1. Access **all the members** by inserting them in the connection string
+2. Access **just one member** and let the driver discover the others
+
+```java
+// Method 1
+MongoClient mongoClient1 = MongoClients.create(
+  "mongodb://localhost:27018,localhost:27019,localhost:27020/" +
+  "?retrtWrites=true&w=majority&wtimeoutMS=10000"
+);
+
+// Method 2
+ConnectionString uri = new ConnectionString("mongodb://localhost:27018");
+MongoClientSettings mcs = MongoClientSettings.builder()
+  .applyConnectionString(uri)
+  .retryWrites(true)
+  .writeConcern(WriteConcern.MAJORITY.withWTimeout(10, TimeUnit.SECONDS))
+  .build();
+
+MongoClient mongoClient2 = MongoClients.create(mcs);
+```
+
+### 3.9.5. Configure a Distributed Replica Set
+
+The course provides us with **three virtual machines** running `Ubuntu 20.04` with
+`2GB` disk, reachable through the _university VPN_.
+
+<div class="flexbox" markdown="1">
+
+| VM  | IP address  |  Port   | Priority |
+| :-: | :---------: | :-----: | :------: |
+| VM1 | `10.1.1.xx` | `27020` |    1     |
+| VM2 | `10.1.1.xx` | `27020` |    2     |
+| VM3 | `10.1.1.xx` | `27020` |    5     |
+
+</div>
+
+> [!NOTE]
+> The actual IP addresses will be provided by the course staff when we are
+> near the project discussion.
+> A couple of weeks before it is mandatory to send an email to prof. Frati,
+> with professor Ducange in cc, asking for them.
+
+When we will have the addresses of the virtual machines, we will need to:
+
+1. Connect to the VPN
+2. Install `MongoDB` on each virtual machine
+3. Start the 3 members and **configure** the replica set from our PC
+
+> [!NOTE]
+> Each machine has the following login:
+>
+> - User: `root`
+> - Password: `root`
+
+After installing openVPN, we need to import a `.ovpn` provided by the professor
+on the official classroom and then connect to the VPN with:
+
+```bash
+openvpn --config <file>.ovpn
+```
+
+> [!IMPORTANT]
+> The actual files and guides are not provided here.  
+> To access them ask directly to the course professors.
+
+After this, it will be possible to open a terminal and connect via `ssh`:
+
+```sh
+ssh root@10.1.1.11      # Example IP
+```
+
+On **each machine**, logged as `root`, we can import the `MongoDB` public
+key:
+
+```sh
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+  gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
+```
+
+After we need to add the `MongoDB` repository:
+
+```sh
+echo "deb [ arch=amd64,arm64 \
+  signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] \
+  https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/8.0 multiverse" | \
+  tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+```
+
+In the end we can reload the package lists:
+
+```sh
+apt-get update
+```
+
+After we can install only the `mondod` server:
+
+```sh
+apt-get install -y --no-install-recommends mongodb-org-server
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+mongodb --version
+```
+
+At this point we can create, for each VM, the data folder and start the server:
+
+```sh
+# Terminal X
+mkdir -p ~/data
+mongod --replSet lsmdb --dbpath ~/data --port 27020 \
+  --bind_ip localhost,10.1.1.xx --oplogSize 50
+```
+
+At each terminal the log must show: `"Wating for connections"`
+
+At this point, from our PC connected through the VPN, we can connect to one of the
+members:
+
+```sh
+# Our terminal through VPN
+mongosh --host 10.1.1.xx --port 27020
+```
+
+```mongodb
+rsconf = {
+  _id: "lsmdb",
+  members: [
+    { _id: 0, host: "10.1.1.x1:27020", priority: 1 },
+    { _id: 1, host: "10.1.1.x2:27020", priority: 2 },
+    { _id: 2, host: "10.1.1.x3:27020", priority: 5 }
+  ]
+};
+rs.initiate(rsconf);
+
+rs.status().members.map(m => m.name + " " + m.stateStr)
+```
+
+At this point we can **write through the replica set**, with the driver
+automatically finding the `PRIMARY`:
+
+```sh
+mongosh "mongodb://10.1.1.x1:27020,10.1.1.x2:27020,10.1.1.x3:27020/?replicaSet=lsmdb"
+```
+
+```mongodb
+use lsmdb
+db.students.insertOne({ name: "Mario" })
+```
+
+To test whether failover works, we can interrupt the current primary `VM3`,
+wait for 10-12 seconds, and then run again `rs.status()`.

@@ -50,7 +50,12 @@ title: MongoDB
     - [2.11.8. How Index Work](#2118-how-index-work)
   - [2.12. Evaluating Queries Performance](#212-evaluating-queries-performance)
     - [2.12.1. Compare Performance of Indexes](#2121-compare-performance-of-indexes)
-    <!--toc:end-->
+  - [2.13. Clustering](#213-clustering)
+    - [2.13.1. Write concern](#2131-write-concern)
+    - [2.13.2. Causal Consistency](#2132-causal-consistency)
+      - [2.13.2.1. Write Concern](#21321-write-concern)
+      - [2.13.2.2. Read Concern](#21322-read-concern)
+      <!--toc:end-->
 
 # 2. MongoDB
 
@@ -2039,3 +2044,149 @@ examines `2` keys instead of `5`.
 > [!TIP]
 > `MongoDB` provides an [official ESR guideline](https://www.mongodb.com/docs/manual/tutorial/equality-sort-range-guideline/)
 > for creating indexes.
+
+## 2.13. Clustering
+
+<div class="grid2">
+<div class="">
+
+A **_replica set_** is a group of `mongod` processes that **keep the same data**.
+
+In a **replica set** we have **_exactly one primary_**. It receives **all the writes**,
+and records every change inside its _operation log_ (**oplog**).
+
+Beside it, we can have as many _secondary_ as we want. They **replicate the oplog
+_asynchronously_** and apply the operations to their data set in the same order
+as the primary.
+
+By default, the clients **read from the primary**.
+
+</div>
+<div class="">
+<img class="80" src="./images/mongodb/replica-set.png"
+      alt="Replica Set Example">
+</div>
+</div>
+
+Members exchange **heartbeats messages** to check the availability of one another.
+By default these messages are sent every 2 seconds, and if a member does not
+respond for `electionTimeoutMillis` (10 seconds by default), it is considered
+unavailable.
+
+Usually a new primary is elected in **less than 12 seconds**.
+
+If the primary is the one that is unavailable, the replica set will **elect a new
+primary** choosing among them. During the election **no writes are possible**,
+while reads can be allowed on the secondary if configured.
+
+The drivers detect the change and automatically retry writes.
+
+The election process elects the node with the most votes. Votes can be
+handed by either _secondary_ nodes, and _arbitration nodes_
+(which do not store data, but only vote).
+
+> [!IMPORTANT]
+> Do not run an _arbiter_ on a machine that also hosts a primary or secondary node
+
+### 2.13.1. Write concern
+
+The level of acknowledgment requested from `MongoDB` for write operations is called
+**write concern**, and it combines:
+
+```mongodb
+{ w: value, j: boolean, wtimeout: number }
+```
+
+- `w` indicates how many members must acknowledge the write. By default it is
+  set to `"majority`
+- `j`: indicates whether the write must be written to the **on-disk journal**.
+  It can assume three values:
+- `wtimeout`: specifies a time limit (millisecond) for the write concern. If
+  the write is not satisfied within the specified time, an error is returned.
+  It can be set to `0` for _indefinite time_
+
+The `w` and `j` options determine **when** a standalone `mongod` acknowledges a
+write operation: after applying it _in memory_ or after writing to the _on-disk
+journal_.
+
+<img class="" src="./images/mongodb/write-concern.png"
+      alt="Write Concern Example">
+
+The value of `w` is the **number of members** that must acknowledge the write before
+returning a success. For each member, `j` decides whether the write must be
+written also to the on-disk journal before acknowledging:
+
+- `j: unspecified`: depends on `writeConcernMajorityJournalDefault` parameter, which
+  is `true` by default
+- `j: true`: acknowledgment after the write to the on-disk journal
+- `j: false`: acknowledgment after the write in memory
+
+### 2.13.2. Causal Consistency
+
+If an operation depends on a preceding one, there is **causal consistency**
+between them.
+
+With **causally consistent sessions (CCS)**, operations are executed in an
+order that respects the causal relationships.
+
+Inside a CCS, **only one thread at a time** may execute the operations.
+
+The CCS guarantees _causal consistency_ only if:
+
+- **Reads** use `"majority"` read concern
+- **Writes** use `"majority"` write concern
+
+A possible evolution of a CCS is the following:
+
+<figure class="">
+<img class="" src="./images/mongodb/causal-consistency.png"
+      alt="Causal Consistency Example">
+<figcaption>
+
+The primary answers after the majority (2 of 3) has the write.  
+The 3rd member replicates later
+
+</figcaption>
+</figure>
+
+In general we have **more acks** (meaning _more latency_) to achieve
+**less rollback risk**.
+
+#### 2.13.2.1. Write Concern
+
+We can set the write concern at different levels:
+
+- **Client Level**: the write concern is set for all operations performed by
+  the client
+- **Database Level**: the write concern is set for all operations performed on
+  the database
+- **Collection Level**: the write concern is set for all operations performed
+  on the collection
+
+#### 2.13.2.2. Read Concern
+
+By default read operations connect with the **primary node**.
+
+However we can configure the **read concern** to gain control over
+**which members are used for reads**.
+
+For example, we can set the read concern to `"nearest"`, which will
+perform reads from the **nearest member** of the replica set,
+which can be either the primary or a secondary node.
+
+This can be beneficial to a latency point of view, but it can also lead
+to **_stale reads_**, as the secondary nodes may not have replicated the latest
+writes yet, since replication happens asynchronously.
+
+> [!TIP]
+> Reading _stale data_ is not necessarily a problem, as it depends on the
+> application. For example, if we are reading _restaurant's reviews_, it is not
+> a problem if we miss a review that is a few seconds old, as it is not a
+> critical information.  
+> However, if we are reading _bank account balances_, it is a problem if we
+> miss a recent transaction, as it can lead to _overdrafts_ or _double spending_.
+
+A client can choose between five modes:
+
+<img class="" src="./images/mongodb/read-concern.png"
+      alt="Read Concern Example">
