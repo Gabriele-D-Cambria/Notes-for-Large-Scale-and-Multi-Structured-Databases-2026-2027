@@ -156,6 +156,7 @@ prerequisites of this course:
 1. [Redis](./lab/Redis)
 1. [MongoDB](./lab/MongoDB)
 1. [MongoDB and Java](./lab/MongoDB%20and%20Java)
+1. [Neo4j](./lab/Neo4j)
 
 ## 📜 Disclaimer
 
